@@ -1,29 +1,23 @@
 import type { Metadata } from "next";
-import { Geist } from "next/font/google";
 import "./globals.css";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
 export const metadata: Metadata = {
-  title: "Brasserie No. 8 | Service dashboard",
-  description: "A focused restaurant operations dashboard for Brasserie No. 8.",
+  title: "Coral Reef and Beef | Service dashboard",
+  description: "A focused restaurant operations dashboard for Coral Reef and Beef.",
   openGraph: {
-    title: "Brasserie No. 8 | Service dashboard",
-    description: "Dinner service, in hand.",
+    title: "Coral Reef and Beef | Service dashboard",
+    description: "Service, in hand.",
     images: ["/og.png"],
   },
   twitter: {
     card: "summary_large_image",
-    title: "Brasserie No. 8 | Service dashboard",
-    description: "Dinner service, in hand.",
+    title: "Coral Reef and Beef | Service dashboard",
+    description: "Service, in hand.",
     images: ["/og.png"],
   },
   icons: {
-    icon: "/favicon.svg",
-    shortcut: "/favicon.svg",
+    icon: "/coral-icon.png",
+    shortcut: "/coral-icon.png",
   },
 };
 
@@ -34,9 +28,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body
-        className={`${geistSans.variable} antialiased`}
-      >
+      <body>
         {children}
       </body>
     </html>

@@ -40,3 +40,12 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
+
+# terraform
+infra/.terraform/
+infra/*.tfstate
+infra/*.tfstate.backup
+infra/*.tfplan
+infra/.terraform.lock.hcl
+# branding assets
+/branding/
