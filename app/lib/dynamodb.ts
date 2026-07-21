@@ -1,5 +1,5 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, ScanCommand, PutCommand, UpdateCommand, DeleteCommand } from "@aws-sdk/lib-dynamodb";
+import { DynamoDBDocumentClient, ScanCommand, PutCommand, UpdateCommand, DeleteCommand, QueryCommand } from "@aws-sdk/lib-dynamodb";
 import { fetchAuthSession } from "aws-amplify/auth";
 
 const REGION = "us-east-1";
@@ -84,5 +84,52 @@ export async function deleteSharedLoan(id: string): Promise<void> {
 
   await docClient.send(
     new DeleteCommand({ TableName: "coral-shared-loans", Key: { id } })
+  );
+}
+
+// --- Loan Charges ---
+
+export type LoanCharge = {
+  loanId: string;
+  chargeId: string;
+  date: string;
+  amount: string;
+  description: string;
+  type: "payment" | "interest" | "fee" | "adjustment";
+  receipt?: string;
+};
+
+export type LoanChargeInput = Omit<LoanCharge, "loanId" | "chargeId">;
+
+export async function fetchLoanCharges(loanId: string): Promise<LoanCharge[]> {
+  const docClient = await getClient();
+  const result = await docClient.send(
+    new QueryCommand({
+      TableName: "coral-loan-charges",
+      KeyConditionExpression: "loanId = :loanId",
+      ExpressionAttributeValues: { ":loanId": loanId },
+      ScanIndexForward: false,
+    })
+  );
+  return (result.Items || []) as LoanCharge[];
+}
+
+export async function createLoanCharge(loanId: string, charge: LoanChargeInput): Promise<LoanCharge> {
+  const docClient = await getClient();
+  const chargeId = `chg-${Date.now()}`;
+  const item: LoanCharge = { loanId, chargeId, ...charge };
+
+  await docClient.send(
+    new PutCommand({ TableName: "coral-loan-charges", Item: item })
+  );
+
+  return item;
+}
+
+export async function deleteLoanCharge(loanId: string, chargeId: string): Promise<void> {
+  const docClient = await getClient();
+
+  await docClient.send(
+    new DeleteCommand({ TableName: "coral-loan-charges", Key: { loanId, chargeId } })
   );
 }

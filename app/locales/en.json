@@ -112,7 +112,19 @@
     "creating": "Creating...",
     "saving": "Saving...",
     "notes": "Notes",
-    "notesPlaceholder": "Add any relevant notes..."
+    "notesPlaceholder": "Add any relevant notes...",
+    "chargeHistory": "Charge History",
+    "addCharge": "Add Charge",
+    "chargeDate": "Date",
+    "chargeAmount": "Amount",
+    "chargeDescription": "Description",
+    "chargeType": "Type",
+    "chargePayment": "Payment",
+    "chargeInterest": "Interest",
+    "chargeFee": "Fee",
+    "chargeAdjustment": "Adjustment",
+    "noCharges": "No charges recorded yet.",
+    "viewCharges": "View History"
   },
   "expenses": {
     "title": "Expenses",

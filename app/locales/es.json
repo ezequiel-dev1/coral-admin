@@ -112,7 +112,19 @@
     "creating": "Creando...",
     "saving": "Guardando...",
     "notes": "Notas",
-    "notesPlaceholder": "Agrega notas relevantes..."
+    "notesPlaceholder": "Agrega notas relevantes...",
+    "chargeHistory": "Historial de Cargos",
+    "addCharge": "Agregar Cargo",
+    "chargeDate": "Fecha",
+    "chargeAmount": "Monto",
+    "chargeDescription": "Descripción",
+    "chargeType": "Tipo",
+    "chargePayment": "Pago",
+    "chargeInterest": "Interés",
+    "chargeFee": "Comisión",
+    "chargeAdjustment": "Ajuste",
+    "noCharges": "No hay cargos registrados.",
+    "viewCharges": "Ver Historial"
   },
   "expenses": {
     "title": "Gastos",

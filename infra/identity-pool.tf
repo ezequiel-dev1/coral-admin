@@ -58,8 +58,9 @@ resource "aws_iam_role_policy" "dynamodb_access" {
     Version = "2012-10-17"
     Statement = [
       {
-        Effect = "Allow"
-        Action = [
+        Sid       = "DynamoDBAccess"
+        Effect    = "Allow"
+        Action    = [
           "dynamodb:Scan",
           "dynamodb:Query",
           "dynamodb:GetItem",
@@ -68,7 +69,19 @@ resource "aws_iam_role_policy" "dynamodb_access" {
           "dynamodb:DeleteItem"
         ]
         Resource = [
-          aws_dynamodb_table.shared_loans.arn
+          aws_dynamodb_table.shared_loans.arn,
+          aws_dynamodb_table.loan_charges.arn
+        ]
+      },
+      {
+        Sid       = "ReceiptsS3Access"
+        Effect    = "Allow"
+        Action    = [
+          "s3:GetObject",
+          "s3:PutObject"
+        ]
+        Resource = [
+          "${aws_s3_bucket.receipts.arn}/*"
         ]
       }
     ]

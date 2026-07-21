@@ -36,7 +36,33 @@ function getInitials(name: string): string {
 export function Dashboard() {
   const { user, logout } = useAuth();
   const { lang, setLang, t } = useTranslation();
-  const [tab, setTab] = useState("Overview");
+
+  const validTabs = ["Overview", "Providers", "Investments", "Shared Loans", "Expenses", "Accounting", "Invoices"];
+
+  function getTabFromHash(): string {
+    if (typeof window === "undefined") return "Overview";
+    const hash = window.location.hash.slice(1).replace(/-/g, " ");
+    const match = validTabs.find((t) => t.toLowerCase() === hash.toLowerCase());
+    return match || "Overview";
+  }
+
+  const [tab, setTabState] = useState("Overview");
+
+  useEffect(() => {
+    setTabState(getTabFromHash());
+
+    function onHashChange() {
+      setTabState(getTabFromHash());
+    }
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  function setTab(key: string) {
+    const hash = key.toLowerCase().replace(/ /g, "-");
+    window.location.hash = hash;
+    setTabState(key);
+  }
 
   const displayName = user?.name || "there";
   const initials = user ? getInitials(user.name) : "??";

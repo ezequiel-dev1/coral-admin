@@ -8,8 +8,13 @@ import {
   createSharedLoan,
   updateSharedLoan,
   deleteSharedLoan,
+  fetchLoanCharges,
+  createLoanCharge,
+  deleteLoanCharge,
   SharedLoan,
   SharedLoanInput,
+  LoanCharge,
+  LoanChargeInput,
 } from "../lib/dynamodb";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,7 +35,7 @@ import {
   TableRow,
   TableCell,
 } from "@/components/ui/table";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, History, Paperclip, Maximize2 } from "lucide-react";
 import { CurrencyInput } from "@/components/ui/currency-input";
 import { PercentInput } from "@/components/ui/percent-input";
 
@@ -65,6 +70,16 @@ export function SharedLoansPage() {
   const { t } = useTranslation();
   const isAdmin = useIsAdmin();
 
+  // Charge history state
+  const [showCharges, setShowCharges] = useState(false);
+  const [chargesLoan, setChargesLoan] = useState<SharedLoan | null>(null);
+  const [charges, setCharges] = useState<LoanCharge[]>([]);
+  const [chargesLoading, setChargesLoading] = useState(false);
+  const [chargeForm, setChargeForm] = useState<LoanChargeInput>({ date: "", amount: "", description: "", type: "payment" });
+  const [addingCharge, setAddingCharge] = useState(false);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [fullscreen, setFullscreen] = useState(false);
+
   useEffect(() => {
     loadLoans();
   }, []);
@@ -87,13 +102,22 @@ export function SharedLoansPage() {
     setShowModal(true);
   }
 
-  function openEdit(loan: SharedLoan) {
+  async function openEdit(loan: SharedLoan) {
     setEditingLoan(loan);
+    // Calculate remaining from charges
+    let remaining = loan.remaining;
+    try {
+      const chargeData = await fetchLoanCharges(loan.id);
+      const totalNum = parseFloat(loan.totalAmount.replace(/[^0-9.]/g, "") || "0");
+      const paidSum = chargeData.reduce((acc, c) => acc + parseFloat(c.amount.replace(/[^0-9.]/g, "") || "0"), 0);
+      const rem = totalNum - paidSum;
+      remaining = rem.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: rem % 1 === 0 ? 0 : 2 });
+    } catch { /* fallback to stored value */ }
     setForm({
       lender: loan.lender,
       purpose: loan.purpose,
       totalAmount: loan.totalAmount,
-      remaining: loan.remaining,
+      remaining,
       monthlyPayment: loan.monthlyPayment,
       rate: loan.rate,
       dueDate: loan.dueDate,
@@ -130,6 +154,61 @@ export function SharedLoansPage() {
     }
   }
 
+  async function openCharges(loan: SharedLoan) {
+    setChargesLoan(loan);
+    setShowCharges(true);
+    setChargesLoading(true);
+    setChargeForm({ date: "", amount: "", description: "", type: "payment" });
+    setPreviewImage(null);
+    try {
+      const data = await fetchLoanCharges(loan.id);
+      setCharges(data);
+    } catch (err) {
+      console.error("Failed to fetch charges:", err);
+    } finally {
+      setChargesLoading(false);
+    }
+  }
+
+  async function handleAddCharge() {
+    if (!chargesLoan) return;
+    setAddingCharge(true);
+    try {
+      await createLoanCharge(chargesLoan.id, chargeForm);
+      const data = await fetchLoanCharges(chargesLoan.id);
+      setCharges(data);
+      setChargeForm({ date: "", amount: "", description: "", type: "payment" });
+      // Recalculate remaining
+      await recalculateRemaining(chargesLoan, data);
+    } catch (err) {
+      console.error("Failed to add charge:", err);
+    } finally {
+      setAddingCharge(false);
+    }
+  }
+
+  async function handleDeleteCharge(charge: LoanCharge) {
+    if (!chargesLoan) return;
+    try {
+      await deleteLoanCharge(charge.loanId, charge.chargeId);
+      const data = await fetchLoanCharges(chargesLoan.id);
+      setCharges(data);
+      // Recalculate remaining
+      await recalculateRemaining(chargesLoan, data);
+    } catch (err) {
+      console.error("Failed to delete charge:", err);
+    }
+  }
+
+  async function recalculateRemaining(loan: SharedLoan, chargeData: LoanCharge[]) {
+    const totalNum = parseFloat(loan.totalAmount.replace(/[^0-9.]/g, "") || "0");
+    const paidSum = chargeData.reduce((acc, c) => acc + parseFloat(c.amount.replace(/[^0-9.]/g, "") || "0"), 0);
+    const rem = totalNum - paidSum;
+    const remaining = rem.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: rem % 1 === 0 ? 0 : 2 });
+    await updateSharedLoan(loan.id, { ...loan, remaining });
+    await loadLoans();
+  }
+
   return (
     <div className="page">
       <div className="page-header flex items-center justify-between">
@@ -161,7 +240,7 @@ export function SharedLoansPage() {
                 <TableHead>{t("sharedLoans.dueDate")}</TableHead>
                 <TableHead>{t("sharedLoans.notes")}</TableHead>
                 <TableHead>{t("sharedLoans.status")}</TableHead>
-                {isAdmin && <TableHead className="w-20" />}
+                {isAdmin && <TableHead className="w-28" />}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -179,6 +258,9 @@ export function SharedLoansPage() {
                   {isAdmin && (
                     <TableCell>
                       <div className="flex gap-1">
+                        <Button variant="ghost" size="icon-sm" onClick={() => openCharges(l)} aria-label="History">
+                          <History />
+                        </Button>
                         <Button variant="ghost" size="icon-sm" onClick={() => openEdit(l)} aria-label="Edit">
                           <Pencil />
                         </Button>
@@ -221,7 +303,8 @@ export function SharedLoansPage() {
               </div>
               <div className="grid gap-2">
                 <Label>{t("sharedLoans.remaining")}</Label>
-                <CurrencyInput value={form.remaining} onChange={(v) => setForm({ ...form, remaining: v })} placeholder="35000" />
+                <Input value={form.remaining} disabled className="bg-[#f5f3f1] opacity-70" />
+                <span className="text-xs text-[var(--text-muted)]">Auto-calculated from charges</span>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -270,6 +353,130 @@ export function SharedLoansPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={showCharges} onOpenChange={(open) => { setShowCharges(open); if (!open) setPreviewImage(null); }}>
+        <DialogContent className="sm:max-w-6xl">
+          <DialogHeader>
+            <DialogTitle>{t("sharedLoans.chargeHistory")} — {chargesLoan?.lender}</DialogTitle>
+          </DialogHeader>
+
+          {isAdmin && (
+            <div className="grid grid-cols-[1fr_1fr_2fr_1fr_auto] gap-2 items-end border-b pb-4">
+              <div className="grid gap-1">
+                <Label className="text-xs">{t("sharedLoans.chargeDate")}</Label>
+                <Input type="date" value={chargeForm.date} onChange={(e) => setChargeForm({ ...chargeForm, date: e.target.value })} />
+              </div>
+              <div className="grid gap-1">
+                <Label className="text-xs">{t("sharedLoans.chargeAmount")}</Label>
+                <CurrencyInput value={chargeForm.amount} onChange={(v) => setChargeForm({ ...chargeForm, amount: v })} placeholder="1000" />
+              </div>
+              <div className="grid gap-1">
+                <Label className="text-xs">{t("sharedLoans.chargeDescription")}</Label>
+                <Input value={chargeForm.description} onChange={(e) => setChargeForm({ ...chargeForm, description: e.target.value })} placeholder="Monthly payment" />
+              </div>
+              <div className="grid gap-1">
+                <Label className="text-xs">{t("sharedLoans.chargeType")}</Label>
+                <select
+                  className="h-8 w-full rounded-lg border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring"
+                  value={chargeForm.type}
+                  onChange={(e) => setChargeForm({ ...chargeForm, type: e.target.value as LoanChargeInput["type"] })}
+                >
+                  <option value="payment">{t("sharedLoans.chargePayment")}</option>
+                  <option value="interest">{t("sharedLoans.chargeInterest")}</option>
+                  <option value="fee">{t("sharedLoans.chargeFee")}</option>
+                  <option value="adjustment">{t("sharedLoans.chargeAdjustment")}</option>
+                </select>
+              </div>
+              <Button size="sm" onClick={handleAddCharge} disabled={addingCharge || !chargeForm.date || !chargeForm.amount}>
+                <Plus size={14} />
+              </Button>
+            </div>
+          )}
+
+          {!chargesLoading && charges.length > 0 && (
+            <div className="flex gap-6 py-3 px-1 border-b text-sm">
+              <div><span className="text-[var(--text-muted)]">Total paid:</span> <strong>{(() => { const sum = charges.reduce((acc, c) => acc + parseFloat(c.amount.replace(/[^0-9.]/g, "") || "0"), 0); return sum.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: sum % 1 === 0 ? 0 : 2 }); })()}</strong></div>
+              <div><span className="text-[var(--text-muted)]">Payments:</span> <strong>{charges.length}</strong></div>
+              <div><span className="text-[var(--text-muted)]">Avg:</span> <strong>{(() => { const sum = charges.reduce((acc, c) => acc + parseFloat(c.amount.replace(/[^0-9.]/g, "") || "0"), 0); const avg = sum / charges.length; return avg.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: avg % 1 === 0 ? 0 : 2 }); })()}</strong></div>
+            </div>
+          )}
+
+          <div className={`grid gap-4 ${previewImage ? "grid-cols-[1fr_300px]" : "grid-cols-1"}`}>
+            <div className="max-h-[560px] overflow-y-auto">
+              {chargesLoading ? (
+                <p className="py-8 text-center text-sm text-muted-foreground">Loading...</p>
+              ) : charges.length === 0 ? (
+                <p className="py-8 text-center text-sm text-muted-foreground">{t("sharedLoans.noCharges")}</p>
+              ) : (
+                <Table className="table-fixed">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-28">{t("sharedLoans.chargeDate")}</TableHead>
+                      <TableHead className="w-24">{t("sharedLoans.chargeType")}</TableHead>
+                      <TableHead>{t("sharedLoans.chargeDescription")}</TableHead>
+                      <TableHead className="w-24 text-right">{t("sharedLoans.chargeAmount")}</TableHead>
+                      <TableHead className="w-24"></TableHead>
+                      {isAdmin && <TableHead className="w-10" />}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {charges.map((c) => (
+                      <TableRow key={c.chargeId} className={previewImage === c.receipt ? "bg-muted/50" : ""}>
+                        <TableCell className="whitespace-nowrap">{c.date}</TableCell>
+                        <TableCell><Badge variant="outline">{c.type}</Badge></TableCell>
+                        <TableCell className="whitespace-normal text-sm leading-snug">
+                          {c.description}
+                        </TableCell>
+                        <TableCell className="font-medium text-right whitespace-nowrap">{c.amount}</TableCell>
+                        <TableCell>
+                          {c.receipt && (
+                            <button
+                              onClick={() => setPreviewImage(previewImage === c.receipt ? null : c.receipt!)}
+                              className="inline-flex items-center gap-1 text-xs text-[#3D4F9B] hover:underline cursor-pointer bg-transparent border-none"
+                            >
+                              <Paperclip size={12} /> Attachment
+                            </button>
+                          )}
+                        </TableCell>
+                        {isAdmin && (
+                          <TableCell>
+                            <Button variant="ghost" size="icon-xs" onClick={() => handleDeleteCharge(c)} aria-label="Delete">
+                              <Trash2 size={12} />
+                            </Button>
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </div>
+
+            {previewImage && (
+              <div className="border rounded-lg p-3 bg-[#f9f8f7] flex flex-col items-center justify-center gap-2 animate-in fade-in slide-in-from-right-4 duration-200">
+                <img src={previewImage} alt="Attachment" className="max-w-full max-h-[480px] rounded-md object-contain shadow-sm" />
+                <div className="flex gap-3 mt-1">
+                  <button onClick={() => setFullscreen(true)} className="inline-flex items-center gap-1 text-xs text-[#3D4F9B] hover:underline cursor-pointer bg-transparent border-none">
+                    <Maximize2 size={12} /> Full screen
+                  </button>
+                  <button onClick={() => setPreviewImage(null)} className="text-xs text-[var(--text-muted)] hover:underline cursor-pointer bg-transparent border-none">
+                    Close preview
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {fullscreen && previewImage && (
+        <div className="image-preview-backdrop" onClick={() => setFullscreen(false)}>
+          <div className="image-preview-container" onClick={(e) => e.stopPropagation()}>
+            <button className="image-preview-close" onClick={() => setFullscreen(false)}>&times;</button>
+            <img src={previewImage} alt="Attachment" className="image-preview-img" />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
