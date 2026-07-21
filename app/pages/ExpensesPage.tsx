@@ -2,6 +2,17 @@
 
 import { useState } from "react";
 import { useTranslation } from "../i18n/LanguageProvider";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableHead,
+  TableRow,
+  TableCell,
+} from "@/components/ui/table";
+import { Search } from "lucide-react";
 
 const expenses = [
   { id: 1, date: "2026-07-20", category: "Food & Beverage", vendor: "Ocean Fresh Seafood", description: "Weekly seafood order", amount: "$4,200", paymentMethod: "Bank Transfer" },
@@ -35,42 +46,44 @@ export function ExpensesPage() {
         <p className="page-subtitle">{t("expenses.subtitle")}</p>
       </div>
 
-      <div className="page-toolbar">
-        <input
-          type="text"
-          className="page-search"
-          placeholder={t("expenses.search")}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+      <div className="flex items-center gap-3 mb-5">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <Input
+            className="pl-8"
+            placeholder={t("expenses.search")}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
       </div>
 
-      <div className="page-table-wrap">
-        <table className="page-table">
-          <thead>
-            <tr>
-              <th>{t("expenses.date")}</th>
-              <th>{t("expenses.category")}</th>
-              <th>{t("expenses.vendor")}</th>
-              <th>{t("expenses.description")}</th>
-              <th>{t("expenses.amount")}</th>
-              <th>{t("expenses.paymentMethod")}</th>
-            </tr>
-          </thead>
-          <tbody>
+      <div className="rounded-lg border bg-white">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{t("expenses.date")}</TableHead>
+              <TableHead>{t("expenses.category")}</TableHead>
+              <TableHead>{t("expenses.vendor")}</TableHead>
+              <TableHead>{t("expenses.description")}</TableHead>
+              <TableHead>{t("expenses.amount")}</TableHead>
+              <TableHead>{t("expenses.paymentMethod")}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {filtered.map((e) => (
-              <tr key={e.id}>
-                <td>{e.date}</td>
-                <td><span className="badge badge-expense">{e.category}</span></td>
-                <td>{e.vendor}</td>
-                <td>{e.description}</td>
-                <td><strong>{e.amount}</strong></td>
-                <td>{e.paymentMethod}</td>
-              </tr>
+              <TableRow key={e.id}>
+                <TableCell>{e.date}</TableCell>
+                <TableCell><Badge variant="secondary">{e.category}</Badge></TableCell>
+                <TableCell>{e.vendor}</TableCell>
+                <TableCell>{e.description}</TableCell>
+                <TableCell className="font-medium">{e.amount}</TableCell>
+                <TableCell>{e.paymentMethod}</TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
-        {filtered.length === 0 && <p className="no-results">{t("expenses.noResults")}</p>}
+          </TableBody>
+        </Table>
+        {filtered.length === 0 && <p className="p-8 text-center text-sm text-muted-foreground">{t("expenses.noResults")}</p>}
       </div>
     </div>
   );

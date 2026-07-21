@@ -110,9 +110,12 @@ export function OverviewPage() {
   const displayName = user?.name || "there";
   const [notice, setNotice] = useState(t("overview.serviceOnTrack"));
   const [activeTable, setActiveTable] = useState("01");
+  const [greeting, setGreeting] = useState("");
 
-  const hour = new Date().getHours();
-  const greeting = hour < 12 ? t("greeting.morning") : hour < 18 ? t("greeting.afternoon") : t("greeting.evening");
+  useEffect(() => {
+    const hour = new Date().getHours();
+    setGreeting(hour < 12 ? t("greeting.morning") : hour < 18 ? t("greeting.afternoon") : t("greeting.evening"));
+  }, [t]);
 
   return (
     <>

@@ -23,6 +23,7 @@ Amplify.configure({
     Cognito: {
       userPoolId: authConfig.userPoolId,
       userPoolClientId: authConfig.userPoolClientId,
+      identityPoolId: "us-east-1:1de47ee7-3725-45fb-bcff-e2447e16c814",
       loginWith: {
         oauth: {
           domain: authConfig.domain,
@@ -40,7 +41,7 @@ export type AuthUser = {
   email: string;
   name: string;
   userId: string;
-  group: string;
+  groups: string[];
 };
 
 type AuthContextType = {
@@ -77,7 +78,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         userId: currentUser.userId,
         email: (payload?.email as string) || "",
         name: (payload?.name as string) || (payload?.email as string) || "",
-        group: groups[0] || "",
+        groups: groups,
       });
     } catch {
       // Not authenticated

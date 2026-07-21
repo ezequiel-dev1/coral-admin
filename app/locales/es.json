@@ -14,7 +14,9 @@
     "providers": "Proveedores",
     "investments": "Inversiones",
     "sharedLoans": "Préstamos",
-    "expenses": "Gastos"
+    "expenses": "Gastos",
+    "accounting": "Contabilidad",
+    "invoices": "Facturas"
   },
   "greeting": {
     "morning": "Buenos días",
@@ -100,7 +102,17 @@
     "rate": "Tasa",
     "dueDate": "Fecha Límite",
     "status": "Estado",
-    "noResults": "No se encontraron préstamos."
+    "noResults": "No se encontraron préstamos.",
+    "addLoan": "Agregar Préstamo",
+    "editLoan": "Editar Préstamo",
+    "deleteLoan": "Eliminar Préstamo",
+    "confirmDelete": "¿Estás seguro de que deseas eliminar este préstamo?",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "creating": "Creando...",
+    "saving": "Guardando...",
+    "notes": "Notas",
+    "notesPlaceholder": "Agrega notas relevantes..."
   },
   "expenses": {
     "title": "Gastos",
@@ -120,6 +132,32 @@
     "pending": "Pendiente",
     "completed": "Completado",
     "inProgress": "En Progreso",
-    "paidOff": "Pagado"
+    "paidOff": "Pagado",
+    "overdue": "Vencido",
+    "paid": "Pagado"
+  },
+  "accounting": {
+    "title": "Contabilidad",
+    "subtitle": "Libro mayor y registros financieros",
+    "search": "Buscar registros...",
+    "date": "Fecha",
+    "account": "Cuenta",
+    "type": "Tipo",
+    "description": "Descripción",
+    "amount": "Monto",
+    "balance": "Saldo",
+    "noResults": "No se encontraron registros."
+  },
+  "invoices": {
+    "title": "Facturas",
+    "subtitle": "Administra y rastrea facturas de clientes",
+    "search": "Buscar facturas...",
+    "number": "Factura #",
+    "client": "Cliente",
+    "date": "Fecha",
+    "dueDate": "Fecha Límite",
+    "amount": "Monto",
+    "status": "Estado",
+    "noResults": "No se encontraron facturas."
   }
 }

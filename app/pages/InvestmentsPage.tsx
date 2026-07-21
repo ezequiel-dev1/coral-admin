@@ -2,6 +2,17 @@
 
 import { useState } from "react";
 import { useTranslation } from "../i18n/LanguageProvider";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableHead,
+  TableRow,
+  TableCell,
+} from "@/components/ui/table";
+import { Search } from "lucide-react";
 
 const investments = [
   { id: 1, name: "Kitchen Renovation", category: "Infrastructure", invested: "$45,000", returnEstimate: "18%", startDate: "2026-03-01", status: "In Progress" },
@@ -13,6 +24,16 @@ const investments = [
   { id: 7, name: "Delivery Fleet", category: "Operations", invested: "$32,000", returnEstimate: "20%", startDate: "2026-06-15", status: "Pending" },
   { id: 8, name: "Solar Panel Installation", category: "Infrastructure", invested: "$22,000", returnEstimate: "12%", startDate: "2025-11-01", status: "Completed" },
 ];
+
+function statusVariant(status: string) {
+  switch (status.toLowerCase()) {
+    case "active": return "secondary" as const;
+    case "completed": return "default" as const;
+    case "in progress": return "outline" as const;
+    case "pending": return "outline" as const;
+    default: return "secondary" as const;
+  }
+}
 
 export function InvestmentsPage() {
   const [search, setSearch] = useState("");
@@ -32,42 +53,44 @@ export function InvestmentsPage() {
         <p className="page-subtitle">{t("investments.subtitle")}</p>
       </div>
 
-      <div className="page-toolbar">
-        <input
-          type="text"
-          className="page-search"
-          placeholder={t("investments.search")}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+      <div className="flex items-center gap-3 mb-5">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <Input
+            className="pl-8"
+            placeholder={t("investments.search")}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
       </div>
 
-      <div className="page-table-wrap">
-        <table className="page-table">
-          <thead>
-            <tr>
-              <th>{t("investments.name")}</th>
-              <th>{t("investments.category")}</th>
-              <th>{t("investments.invested")}</th>
-              <th>{t("investments.estReturn")}</th>
-              <th>{t("investments.startDate")}</th>
-              <th>{t("investments.status")}</th>
-            </tr>
-          </thead>
-          <tbody>
+      <div className="rounded-lg border bg-white">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{t("investments.name")}</TableHead>
+              <TableHead>{t("investments.category")}</TableHead>
+              <TableHead>{t("investments.invested")}</TableHead>
+              <TableHead>{t("investments.estReturn")}</TableHead>
+              <TableHead>{t("investments.startDate")}</TableHead>
+              <TableHead>{t("investments.status")}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {filtered.map((i) => (
-              <tr key={i.id}>
-                <td><strong>{i.name}</strong></td>
-                <td>{i.category}</td>
-                <td>{i.invested}</td>
-                <td>{i.returnEstimate}</td>
-                <td>{i.startDate}</td>
-                <td><span className={`status status-${i.status.toLowerCase().replace(" ", "-")}`}>{i.status}</span></td>
-              </tr>
+              <TableRow key={i.id}>
+                <TableCell className="font-medium">{i.name}</TableCell>
+                <TableCell>{i.category}</TableCell>
+                <TableCell>{i.invested}</TableCell>
+                <TableCell>{i.returnEstimate}</TableCell>
+                <TableCell>{i.startDate}</TableCell>
+                <TableCell><Badge variant={statusVariant(i.status)}>{i.status}</Badge></TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
-        {filtered.length === 0 && <p className="no-results">{t("investments.noResults")}</p>}
+          </TableBody>
+        </Table>
+        {filtered.length === 0 && <p className="p-8 text-center text-sm text-muted-foreground">{t("investments.noResults")}</p>}
       </div>
     </div>
   );

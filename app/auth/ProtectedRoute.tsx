@@ -2,6 +2,7 @@
 
 import { useAuth } from "./AuthProvider";
 import { useTranslation } from "../i18n/LanguageProvider";
+import { Button } from "@/components/ui/button";
 
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading, login } = useAuth();
@@ -22,9 +23,9 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
           <img src="/coral-icon.png" alt="Coral Reef and Beef" className="brand-mark" />
           <h1>{t("auth.title")}</h1>
           <p>{t("auth.subtitle")}</p>
-          <button onClick={login} className="auth-button">
+          <Button onClick={login} className="w-full mt-2">
             {t("auth.signIn")}
-          </button>
+          </Button>
         </div>
       </div>
     );

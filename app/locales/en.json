@@ -14,7 +14,9 @@
     "providers": "Providers",
     "investments": "Investments",
     "sharedLoans": "Shared Loans",
-    "expenses": "Expenses"
+    "expenses": "Expenses",
+    "accounting": "Accounting",
+    "invoices": "Invoices"
   },
   "greeting": {
     "morning": "Good morning",
@@ -100,7 +102,17 @@
     "rate": "Rate",
     "dueDate": "Due Date",
     "status": "Status",
-    "noResults": "No matching loans found."
+    "noResults": "No matching loans found.",
+    "addLoan": "Add Loan",
+    "editLoan": "Edit Loan",
+    "deleteLoan": "Delete Loan",
+    "confirmDelete": "Are you sure you want to delete this loan?",
+    "save": "Save",
+    "cancel": "Cancel",
+    "creating": "Creating...",
+    "saving": "Saving...",
+    "notes": "Notes",
+    "notesPlaceholder": "Add any relevant notes..."
   },
   "expenses": {
     "title": "Expenses",
@@ -120,6 +132,32 @@
     "pending": "Pending",
     "completed": "Completed",
     "inProgress": "In Progress",
-    "paidOff": "Paid Off"
+    "paidOff": "Paid Off",
+    "overdue": "Overdue",
+    "paid": "Paid"
+  },
+  "accounting": {
+    "title": "Accounting",
+    "subtitle": "General ledger and financial entries",
+    "search": "Search entries...",
+    "date": "Date",
+    "account": "Account",
+    "type": "Type",
+    "description": "Description",
+    "amount": "Amount",
+    "balance": "Balance",
+    "noResults": "No matching entries found."
+  },
+  "invoices": {
+    "title": "Invoices",
+    "subtitle": "Manage and track client invoices",
+    "search": "Search invoices...",
+    "number": "Invoice #",
+    "client": "Client",
+    "date": "Date",
+    "dueDate": "Due Date",
+    "amount": "Amount",
+    "status": "Status",
+    "noResults": "No matching invoices found."
   }
 }

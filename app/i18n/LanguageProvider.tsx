@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useState, useCallback } from "react";
+import { createContext, useContext, useState, useCallback, useEffect } from "react";
 import en from "../locales/en.json";
 import es from "../locales/es.json";
 
@@ -36,7 +36,19 @@ function getNestedValue(obj: unknown, path: string): string | undefined {
 }
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const [lang, setLang] = useState("en-US");
+  const [lang, setLangState] = useState("en-US");
+
+  useEffect(() => {
+    const saved = localStorage.getItem("lang");
+    if (saved && saved !== lang) {
+      setLangState(saved);
+    }
+  }, []);
+
+  const setLang = useCallback((newLang: string) => {
+    setLangState(newLang);
+    localStorage.setItem("lang", newLang);
+  }, []);
 
   const t = useCallback(
     (key: string, vars?: Record<string, string>): string => {
