@@ -70,7 +70,9 @@ resource "aws_iam_role_policy" "dynamodb_access" {
         ]
         Resource = [
           aws_dynamodb_table.shared_loans.arn,
-          aws_dynamodb_table.loan_charges.arn
+          aws_dynamodb_table.loan_charges.arn,
+          aws_dynamodb_table.investments.arn,
+          aws_dynamodb_table.ledger.arn
         ]
       },
       {

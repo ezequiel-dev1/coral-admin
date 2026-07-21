@@ -16,7 +16,8 @@
     "sharedLoans": "Préstamos",
     "expenses": "Gastos",
     "accounting": "Contabilidad",
-    "invoices": "Facturas"
+    "invoices": "Facturas",
+    "ledger": "Libro Mayor"
   },
   "greeting": {
     "morning": "Buenos días",
@@ -85,6 +86,7 @@
     "name": "Nombre",
     "category": "Categoría",
     "invested": "Invertido",
+    "investor": "Inversionista",
     "estReturn": "Retorno Est.",
     "startDate": "Fecha de Inicio",
     "status": "Estado",
@@ -171,5 +173,21 @@
     "amount": "Monto",
     "status": "Estado",
     "noResults": "No se encontraron facturas."
+  },
+  "ledger": {
+    "title": "Libro Mayor",
+    "subtitle": "Libro mayor — todas las inversiones y gastos",
+    "search": "Buscar...",
+    "source": "Fuente",
+    "records": "Registros",
+    "lastUpdated": "Última Actualización",
+    "tipo": "Tipo",
+    "fecha": "Fecha",
+    "abono": "Abono",
+    "cargo": "Cargo",
+    "descripcion": "Descripción",
+    "origen": "Origen",
+    "beneficiario": "Beneficiario",
+    "notas": "Notas"
   }
 }

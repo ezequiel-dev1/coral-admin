@@ -16,7 +16,8 @@
     "sharedLoans": "Shared Loans",
     "expenses": "Expenses",
     "accounting": "Accounting",
-    "invoices": "Invoices"
+    "invoices": "Invoices",
+    "ledger": "Ledger"
   },
   "greeting": {
     "morning": "Good morning",
@@ -85,6 +86,7 @@
     "name": "Name",
     "category": "Category",
     "invested": "Invested",
+    "investor": "Investor",
     "estReturn": "Est. Return",
     "startDate": "Start Date",
     "status": "Status",
@@ -171,5 +173,21 @@
     "amount": "Amount",
     "status": "Status",
     "noResults": "No matching invoices found."
+  },
+  "ledger": {
+    "title": "Ledger",
+    "subtitle": "General ledger — all investments and expenses",
+    "search": "Search...",
+    "source": "Source",
+    "records": "Records",
+    "lastUpdated": "Last Updated",
+    "tipo": "Type",
+    "fecha": "Date",
+    "abono": "Credit",
+    "cargo": "Debit",
+    "descripcion": "Description",
+    "origen": "Source",
+    "beneficiario": "Beneficiary",
+    "notas": "Notes"
   }
 }

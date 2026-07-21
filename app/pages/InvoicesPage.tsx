@@ -1,20 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo } from "react";
 import { useTranslation } from "../i18n/LanguageProvider";
-import { Input } from "@/components/ui/input";
+import { CoralDataGrid, ColumnDef } from "@/components/ui/data-grid";
 import { Badge } from "@/components/ui/badge";
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableHead,
-  TableRow,
-  TableCell,
-} from "@/components/ui/table";
-import { Search } from "lucide-react";
 
-const invoices = [
+type Invoice = { id: number; number: string; client: string; date: string; dueDate: string; amount: string; status: string };
+
+const invoices: Invoice[] = [
   { id: 1, number: "INV-001", client: "Corporate Event Co.", date: "2026-07-20", dueDate: "2026-08-05", amount: "$5,800", status: "Pending" },
   { id: 2, number: "INV-002", client: "Martinez Wedding", date: "2026-07-15", dueDate: "2026-07-30", amount: "$12,400", status: "Paid" },
   { id: 3, number: "INV-003", client: "Tech Summit Catering", date: "2026-07-10", dueDate: "2026-07-25", amount: "$8,900", status: "Overdue" },
@@ -25,72 +18,26 @@ const invoices = [
   { id: 8, number: "INV-008", client: "Rivera Birthday", date: "2026-06-25", dueDate: "2026-07-10", amount: "$1,800", status: "Paid" },
 ];
 
-function statusVariant(status: string) {
-  switch (status.toLowerCase()) {
-    case "paid": return "secondary" as const;
-    case "pending": return "outline" as const;
-    case "overdue": return "destructive" as const;
-    default: return "secondary" as const;
-  }
+function statusVariant(s: string) {
+  switch (s.toLowerCase()) { case "paid": return "secondary" as const; case "overdue": return "destructive" as const; default: return "outline" as const; }
 }
 
 export function InvoicesPage() {
-  const [search, setSearch] = useState("");
   const { t } = useTranslation();
 
-  const filtered = invoices.filter(
-    (i) =>
-      i.number.toLowerCase().includes(search.toLowerCase()) ||
-      i.client.toLowerCase().includes(search.toLowerCase()) ||
-      i.status.toLowerCase().includes(search.toLowerCase())
-  );
+  const columns: ColumnDef<Invoice, unknown>[] = useMemo(() => [
+    { accessorKey: "number", header: t("invoices.number"), size: 120 },
+    { accessorKey: "client", header: t("invoices.client"), size: 200 },
+    { accessorKey: "date", header: t("invoices.date"), size: 120 },
+    { accessorKey: "dueDate", header: t("invoices.dueDate"), size: 120 },
+    { accessorKey: "amount", header: t("invoices.amount"), size: 120, cell: ({ getValue }) => <span className="font-medium">{getValue() as string}</span> },
+    { accessorKey: "status", header: t("invoices.status"), size: 110, cell: ({ getValue }) => <Badge variant={statusVariant(getValue() as string)}>{getValue() as string}</Badge> },
+  ], [t]);
 
   return (
     <div className="page">
-      <div className="page-header">
-        <h1>{t("invoices.title")}</h1>
-        <p className="page-subtitle">{t("invoices.subtitle")}</p>
-      </div>
-
-      <div className="flex items-center gap-3 mb-5">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-          <Input
-            className="pl-8"
-            placeholder={t("invoices.search")}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
-      </div>
-
-      <div className="rounded-lg border bg-white">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>{t("invoices.number")}</TableHead>
-              <TableHead>{t("invoices.client")}</TableHead>
-              <TableHead>{t("invoices.date")}</TableHead>
-              <TableHead>{t("invoices.dueDate")}</TableHead>
-              <TableHead>{t("invoices.amount")}</TableHead>
-              <TableHead>{t("invoices.status")}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {filtered.map((i) => (
-              <TableRow key={i.id}>
-                <TableCell className="font-medium">{i.number}</TableCell>
-                <TableCell>{i.client}</TableCell>
-                <TableCell>{i.date}</TableCell>
-                <TableCell>{i.dueDate}</TableCell>
-                <TableCell className="font-medium">{i.amount}</TableCell>
-                <TableCell><Badge variant={statusVariant(i.status)}>{i.status}</Badge></TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-        {filtered.length === 0 && <p className="p-8 text-center text-sm text-muted-foreground">{t("invoices.noResults")}</p>}
-      </div>
+      <div className="page-header"><div><h1>{t("invoices.title")}</h1><p className="page-subtitle">{t("invoices.subtitle")}</p></div></div>
+      <CoralDataGrid data={invoices} columns={columns} height={500} defaultSorting={[{ id: "date", desc: true }]} />
     </div>
   );
 }

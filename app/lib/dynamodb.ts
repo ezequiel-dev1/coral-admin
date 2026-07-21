@@ -133,3 +133,45 @@ export async function deleteLoanCharge(loanId: string, chargeId: string): Promis
     new DeleteCommand({ TableName: "coral-loan-charges", Key: { loanId, chargeId } })
   );
 }
+
+// --- Investments ---
+
+export type Investment = {
+  id: string;
+  date: string;
+  investor: string;
+  category: string;
+  amount: string;
+  returnEstimate: string;
+};
+
+export async function fetchInvestments(): Promise<Investment[]> {
+  const docClient = await getClient();
+  const result = await docClient.send(
+    new ScanCommand({ TableName: "coral-investments" })
+  );
+  return (result.Items || []) as Investment[];
+}
+
+// --- Ledger ---
+
+export type LedgerEntry = {
+  id: string;
+  tipo: string;
+  fecha: string;
+  abono: string;
+  cargo: string;
+  descripcion: string;
+  origen: string;
+  destinoCLABE: string;
+  destinoBeneficiario: string;
+  notas: string;
+};
+
+export async function fetchLedger(): Promise<LedgerEntry[]> {
+  const docClient = await getClient();
+  const result = await docClient.send(
+    new ScanCommand({ TableName: "coral-ledger" })
+  );
+  return (result.Items || []) as LedgerEntry[];
+}
