@@ -78,16 +78,22 @@ export function Dashboard() {
     setDateStr(new Date().toLocaleDateString(lang, { weekday: "long", day: "numeric", month: "long" }));
   }, [lang]);
 
-  const navItems = [
-    { key: "Overview", label: t("nav.overview"), icon: LayoutDashboard },
-    { key: "Providers", label: t("nav.providers"), icon: Users },
-    { key: "Investments", label: t("nav.investments"), icon: TrendingUp },
-    { key: "Shared Loans", label: t("nav.sharedLoans"), icon: CreditCard },
-    { key: "Expenses", label: t("nav.expenses"), icon: DollarSign },
-    { key: "Accounting", label: t("nav.accounting"), icon: BookOpen },
-    { key: "Invoices", label: t("nav.invoices"), icon: FileText },
-    { key: "Ledger", label: t("nav.ledger"), icon: BookMarked },
+  const isPrivileged = user?.groups?.some(
+    (g) => g === "Administrator" || g === "Overlord"
+  ) ?? false;
+
+  const allNavItems = [
+    { key: "Overview", label: t("nav.overview"), icon: LayoutDashboard, public: true },
+    { key: "Providers", label: t("nav.providers"), icon: Users, public: true },
+    { key: "Investments", label: t("nav.investments"), icon: TrendingUp, public: false },
+    { key: "Shared Loans", label: t("nav.sharedLoans"), icon: CreditCard, public: false },
+    { key: "Expenses", label: t("nav.expenses"), icon: DollarSign, public: false },
+    { key: "Accounting", label: t("nav.accounting"), icon: BookOpen, public: false },
+    { key: "Invoices", label: t("nav.invoices"), icon: FileText, public: false },
+    { key: "Ledger", label: t("nav.ledger"), icon: BookMarked, public: false },
   ];
+
+  const navItems = allNavItems.filter((item) => item.public || isPrivileged);
 
   return (
     <main className="app-shell">
@@ -170,12 +176,12 @@ export function Dashboard() {
         <div className="content">
           {tab === "Overview" && <OverviewPage />}
           {tab === "Providers" && <ProvidersPage />}
-          {tab === "Investments" && <InvestmentsPage />}
-          {tab === "Shared Loans" && <SharedLoansPage />}
-          {tab === "Expenses" && <ExpensesPage />}
-          {tab === "Accounting" && <AccountingPage />}
-          {tab === "Invoices" && <InvoicesPage />}
-          {tab === "Ledger" && <LedgerPage />}
+          {isPrivileged && tab === "Investments" && <InvestmentsPage />}
+          {isPrivileged && tab === "Shared Loans" && <SharedLoansPage />}
+          {isPrivileged && tab === "Expenses" && <ExpensesPage />}
+          {isPrivileged && tab === "Accounting" && <AccountingPage />}
+          {isPrivileged && tab === "Invoices" && <InvoicesPage />}
+          {isPrivileged && tab === "Ledger" && <LedgerPage />}
         </div>
       </section>
     </main>
