@@ -49,3 +49,6 @@ infra/*.tfplan
 infra/.terraform.lock.hcl
 # branding assets
 /branding/
+
+# agent task artifacts
+/.agents/
