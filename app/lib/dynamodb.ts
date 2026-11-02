@@ -168,10 +168,55 @@ export type LedgerEntry = {
   notas: string;
 };
 
+export type LedgerEntryInput = Omit<LedgerEntry, "id">;
+
 export async function fetchLedger(): Promise<LedgerEntry[]> {
   const docClient = await getClient();
   const result = await docClient.send(
     new ScanCommand({ TableName: "coral-ledger" })
   );
   return (result.Items || []) as LedgerEntry[];
+}
+
+export async function createLedgerEntry(entry: LedgerEntryInput): Promise<LedgerEntry> {
+  const docClient = await getClient();
+  const id = `ldg-${Date.now()}`;
+  const item: LedgerEntry = { id, ...entry };
+
+  await docClient.send(
+    new PutCommand({ TableName: "coral-ledger", Item: item })
+  );
+
+  return item;
+}
+
+export async function updateLedgerEntry(id: string, entry: LedgerEntryInput): Promise<void> {
+  const docClient = await getClient();
+
+  await docClient.send(
+    new UpdateCommand({
+      TableName: "coral-ledger",
+      Key: { id },
+      UpdateExpression: "SET tipo = :tipo, fecha = :fecha, abono = :abono, cargo = :cargo, descripcion = :descripcion, origen = :origen, destinoCLABE = :destinoCLABE, destinoBeneficiario = :destinoBeneficiario, notas = :notas",
+      ExpressionAttributeValues: {
+        ":tipo": entry.tipo,
+        ":fecha": entry.fecha,
+        ":abono": entry.abono,
+        ":cargo": entry.cargo,
+        ":descripcion": entry.descripcion,
+        ":origen": entry.origen,
+        ":destinoCLABE": entry.destinoCLABE,
+        ":destinoBeneficiario": entry.destinoBeneficiario,
+        ":notas": entry.notas,
+      },
+    })
+  );
+}
+
+export async function deleteLedgerEntry(id: string): Promise<void> {
+  const docClient = await getClient();
+
+  await docClient.send(
+    new DeleteCommand({ TableName: "coral-ledger", Key: { id } })
+  );
 }

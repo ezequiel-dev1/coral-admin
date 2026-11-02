@@ -188,6 +188,17 @@
     "descripcion": "Descripción",
     "origen": "Origen",
     "beneficiario": "Beneficiario",
-    "notas": "Notas"
+    "clabe": "CLABE",
+    "notas": "Notas",
+    "addEntry": "Agregar Registro",
+    "editEntry": "Editar Registro",
+    "confirmDelete": "¿Estás seguro de que deseas eliminar este registro?",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "creating": "Creando...",
+    "saving": "Guardando...",
+    "tipoInversion": "Inversión",
+    "tipoGasto": "Gasto",
+    "tipoIngreso": "Ingreso"
   }
 }

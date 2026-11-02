@@ -188,6 +188,17 @@
     "descripcion": "Description",
     "origen": "Source",
     "beneficiario": "Beneficiary",
-    "notas": "Notes"
+    "clabe": "CLABE",
+    "notas": "Notes",
+    "addEntry": "Add Entry",
+    "editEntry": "Edit Entry",
+    "confirmDelete": "Are you sure you want to delete this entry?",
+    "save": "Save",
+    "cancel": "Cancel",
+    "creating": "Creating...",
+    "saving": "Saving...",
+    "tipoInversion": "Investment",
+    "tipoGasto": "Expense",
+    "tipoIngreso": "Income"
   }
 }

@@ -32,6 +32,23 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={cn("font-sans", geist.variable)} suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if (typeof window.__REACT_DEVTOOLS_GLOBAL_HOOK__ === 'object') {
+                for (var key in window.__REACT_DEVTOOLS_GLOBAL_HOOK__) {
+                  if (key === 'renderers') {
+                    window.__REACT_DEVTOOLS_GLOBAL_HOOK__[key] = new Map();
+                  } else {
+                    window.__REACT_DEVTOOLS_GLOBAL_HOOK__[key] = typeof window.__REACT_DEVTOOLS_GLOBAL_HOOK__[key] === 'function' ? function(){} : null;
+                  }
+                }
+              }
+            `,
+          }}
+        />
+      </head>
       <body>
         {children}
       </body>
