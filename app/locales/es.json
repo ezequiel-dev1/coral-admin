@@ -84,6 +84,7 @@
     "description": "Descripción",
     "descriptionPlaceholder": "Breve descripción del platillo...",
     "price": "Precio",
+    "order": "Orden",
     "available": "Disponible",
     "availableYes": "Disponible",
     "availableNo": "No disponible",

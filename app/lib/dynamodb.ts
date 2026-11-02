@@ -164,6 +164,7 @@ export type MenuItem = {
   available: boolean;
   imageKey: string;
   notes: string;
+  order: number;
 };
 
 export type MenuItemInput = Omit<MenuItem, "id">;
@@ -173,7 +174,8 @@ export async function fetchMenuItems(): Promise<MenuItem[]> {
   const result = await docClient.send(
     new ScanCommand({ TableName: "coral-menu-items" })
   );
-  return (result.Items || []) as MenuItem[];
+  const items = (result.Items || []) as MenuItem[];
+  return items.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 }
 
 export async function createMenuItem(item: MenuItemInput): Promise<MenuItem> {
@@ -195,8 +197,8 @@ export async function updateMenuItem(id: string, item: MenuItemInput): Promise<v
     new UpdateCommand({
       TableName: "coral-menu-items",
       Key: { id },
-      UpdateExpression: "SET #n = :name, description = :description, category = :category, price = :price, available = :available, imageKey = :imageKey, notes = :notes",
-      ExpressionAttributeNames: { "#n": "name" },
+      UpdateExpression: "SET #n = :name, description = :description, category = :category, price = :price, available = :available, imageKey = :imageKey, notes = :notes, #o = :order",
+      ExpressionAttributeNames: { "#n": "name", "#o": "order" },
       ExpressionAttributeValues: {
         ":name": item.name,
         ":description": item.description,
@@ -205,6 +207,7 @@ export async function updateMenuItem(id: string, item: MenuItemInput): Promise<v
         ":available": item.available,
         ":imageKey": item.imageKey,
         ":notes": item.notes,
+        ":order": item.order,
       },
     })
   );

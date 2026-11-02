@@ -35,6 +35,7 @@ const emptyForm: MenuItemInput = {
   available: true,
   imageKey: "",
   notes: "",
+  order: 0,
 };
 
 function MenuItemImage({ imageKey }: { imageKey: string }) {
@@ -117,6 +118,7 @@ export function MenuItemsPage() {
       available: item.available,
       imageKey: item.imageKey,
       notes: item.notes,
+      order: item.order ?? 0,
     });
     setImageFile(null);
     setPreviewUrl("");
@@ -176,6 +178,12 @@ export function MenuItemsPage() {
         header: t("menuItems.image"),
         size: 70,
         cell: ({ getValue }) => <MenuItemImage imageKey={(getValue() as string) || ""} />,
+      },
+      {
+        accessorKey: "order",
+        header: t("menuItems.order"),
+        size: 90,
+        cell: ({ getValue }) => <span>{(getValue() as number) ?? 0}</span>,
       },
       { accessorKey: "name", header: t("menuItems.name"), size: 180 },
       { accessorKey: "category", header: t("menuItems.category"), size: 150 },
@@ -242,7 +250,7 @@ export function MenuItemsPage() {
         loading={loading}
         height={700}
         defaultPageSize={100}
-        defaultSorting={[{ id: "name", desc: false }]}
+        defaultSorting={[{ id: "order", desc: false }]}
       />
 
       {/* Create / Edit Dialog */}
@@ -280,10 +288,19 @@ export function MenuItemsPage() {
               <Label>{t("menuItems.description")}</Label>
               <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder={t("menuItems.descriptionPlaceholder")} />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-3 gap-4">
               <div className="grid gap-2">
                 <Label>{t("menuItems.price")}</Label>
                 <CurrencyInput value={form.price} onChange={(v) => setForm({ ...form, price: v })} placeholder="0" />
+              </div>
+              <div className="grid gap-2">
+                <Label>{t("menuItems.order")}</Label>
+                <Input
+                  type="number"
+                  value={form.order}
+                  onChange={(e) => setForm({ ...form, order: e.target.value === "" ? 0 : Number(e.target.value) })}
+                  placeholder="0"
+                />
               </div>
               <div className="grid gap-2">
                 <Label>{t("menuItems.available")}</Label>

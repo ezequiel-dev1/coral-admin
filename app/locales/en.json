@@ -84,6 +84,7 @@
     "description": "Description",
     "descriptionPlaceholder": "Short description of the dish...",
     "price": "Price",
+    "order": "Order",
     "available": "Available",
     "availableYes": "Available",
     "availableNo": "Unavailable",
