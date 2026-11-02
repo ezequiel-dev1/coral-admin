@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "./auth/AuthProvider";
 import { useTranslation } from "./i18n/LanguageProvider";
+import { ThemeToggle } from "./ThemeToggle";
 import { OverviewPage } from "./pages/OverviewPage";
 import { ProvidersPage } from "./pages/ProvidersPage";
 import { InvestmentsPage } from "./pages/InvestmentsPage";
@@ -159,6 +160,7 @@ export function Dashboard() {
             <span>{dateStr}</span>
           </div>
           <div className="top-actions">
+            <ThemeToggle />
             <select className="lang-select" value={lang} onChange={(e) => setLang(e.target.value)} aria-label="Language">
               <option value="en-US">🇺🇸 {t("lang.english")}</option>
               <option value="es-MX">🇲🇽 {t("lang.spanish")}</option>

@@ -3,6 +3,10 @@
     "english": "English",
     "spanish": "Español"
   },
+  "theme": {
+    "toDark": "Cambiar a modo oscuro",
+    "toLight": "Cambiar a modo claro"
+  },
   "auth": {
     "loading": "Cargando...",
     "title": "Coral Reef and Beef",
