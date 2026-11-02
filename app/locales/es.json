@@ -15,6 +15,7 @@
   },
   "nav": {
     "overview": "Resumen",
+    "menuItems": "Menú",
     "providers": "Proveedores",
     "investments": "Inversiones",
     "sharedLoans": "Préstamos",
@@ -70,6 +71,30 @@
     "kitchenEquipmentLoan": "Préstamo equipo de cocina",
     "utilitiesElectricity": "Servicios - electricidad",
     "monthlyLease": "Pago mensual de renta"
+  },
+  "menuItems": {
+    "title": "Menú",
+    "subtitle": "Administra los platillos que se sirven en el restaurante",
+    "records": "Platillos",
+    "image": "Imagen",
+    "name": "Nombre",
+    "namePlaceholder": "ej. Pulpo a la Parrilla",
+    "category": "Categoría",
+    "categoryPlaceholder": "ej. Entradas",
+    "description": "Descripción",
+    "descriptionPlaceholder": "Breve descripción del platillo...",
+    "price": "Precio",
+    "available": "Disponible",
+    "availableYes": "Disponible",
+    "availableNo": "No disponible",
+    "notes": "Notas",
+    "addItem": "Agregar Platillo",
+    "editItem": "Editar Platillo",
+    "confirmDelete": "¿Estás seguro de que deseas eliminar este platillo?",
+    "save": "Guardar",
+    "cancel": "Cancelar",
+    "creating": "Creando...",
+    "saving": "Guardando..."
   },
   "providers": {
     "title": "Proveedores",

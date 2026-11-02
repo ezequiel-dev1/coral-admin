@@ -153,6 +153,71 @@ export async function fetchInvestments(): Promise<Investment[]> {
   return (result.Items || []) as Investment[];
 }
 
+// --- Menu Items ---
+
+export type MenuItem = {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  price: string;
+  available: boolean;
+  imageKey: string;
+  notes: string;
+};
+
+export type MenuItemInput = Omit<MenuItem, "id">;
+
+export async function fetchMenuItems(): Promise<MenuItem[]> {
+  const docClient = await getClient();
+  const result = await docClient.send(
+    new ScanCommand({ TableName: "coral-menu-items" })
+  );
+  return (result.Items || []) as MenuItem[];
+}
+
+export async function createMenuItem(item: MenuItemInput): Promise<MenuItem> {
+  const docClient = await getClient();
+  const id = `menu-${Date.now()}`;
+  const record: MenuItem = { id, ...item };
+
+  await docClient.send(
+    new PutCommand({ TableName: "coral-menu-items", Item: record })
+  );
+
+  return record;
+}
+
+export async function updateMenuItem(id: string, item: MenuItemInput): Promise<void> {
+  const docClient = await getClient();
+
+  await docClient.send(
+    new UpdateCommand({
+      TableName: "coral-menu-items",
+      Key: { id },
+      UpdateExpression: "SET #n = :name, description = :description, category = :category, price = :price, available = :available, imageKey = :imageKey, notes = :notes",
+      ExpressionAttributeNames: { "#n": "name" },
+      ExpressionAttributeValues: {
+        ":name": item.name,
+        ":description": item.description,
+        ":category": item.category,
+        ":price": item.price,
+        ":available": item.available,
+        ":imageKey": item.imageKey,
+        ":notes": item.notes,
+      },
+    })
+  );
+}
+
+export async function deleteMenuItem(id: string): Promise<void> {
+  const docClient = await getClient();
+
+  await docClient.send(
+    new DeleteCommand({ TableName: "coral-menu-items", Key: { id } })
+  );
+}
+
 // --- Ledger ---
 
 export type LedgerEntry = {

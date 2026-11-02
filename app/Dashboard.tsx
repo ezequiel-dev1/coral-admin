@@ -5,6 +5,7 @@ import { useAuth } from "./auth/AuthProvider";
 import { useTranslation } from "./i18n/LanguageProvider";
 import { ThemeToggle } from "./ThemeToggle";
 import { OverviewPage } from "./pages/OverviewPage";
+import { MenuItemsPage } from "./pages/MenuItemsPage";
 import { ProvidersPage } from "./pages/ProvidersPage";
 import { InvestmentsPage } from "./pages/InvestmentsPage";
 import { SharedLoansPage } from "./pages/SharedLoansPage";
@@ -16,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import {
   LayoutDashboard,
+  UtensilsCrossed,
   Users,
   TrendingUp,
   CreditCard,
@@ -43,7 +45,7 @@ export function Dashboard() {
   const { user, logout } = useAuth();
   const { lang, setLang, t } = useTranslation();
 
-  const validTabs = ["Overview", "Providers", "Investments", "Shared Loans", "Expenses", "Accounting", "Invoices", "Ledger"];
+  const validTabs = ["Overview", "Menu Items", "Providers", "Investments", "Shared Loans", "Expenses", "Accounting", "Invoices", "Ledger"];
 
   function getTabFromHash(): string {
     if (typeof window === "undefined") return "Overview";
@@ -85,6 +87,7 @@ export function Dashboard() {
 
   const allNavItems = [
     { key: "Overview", label: t("nav.overview"), icon: LayoutDashboard, public: true },
+    { key: "Menu Items", label: t("nav.menuItems"), icon: UtensilsCrossed, public: false },
     { key: "Providers", label: t("nav.providers"), icon: Users, public: true },
     { key: "Investments", label: t("nav.investments"), icon: TrendingUp, public: false },
     { key: "Shared Loans", label: t("nav.sharedLoans"), icon: CreditCard, public: false },
@@ -177,6 +180,7 @@ export function Dashboard() {
 
         <div className="content">
           {tab === "Overview" && <OverviewPage />}
+          {isPrivileged && tab === "Menu Items" && <MenuItemsPage />}
           {tab === "Providers" && <ProvidersPage />}
           {isPrivileged && tab === "Investments" && <InvestmentsPage />}
           {isPrivileged && tab === "Shared Loans" && <SharedLoansPage />}

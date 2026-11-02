@@ -15,6 +15,7 @@
   },
   "nav": {
     "overview": "Overview",
+    "menuItems": "Menu Items",
     "providers": "Providers",
     "investments": "Investments",
     "sharedLoans": "Shared Loans",
@@ -70,6 +71,30 @@
     "kitchenEquipmentLoan": "Kitchen equipment loan",
     "utilitiesElectricity": "Utilities - electricity",
     "monthlyLease": "Monthly lease payment"
+  },
+  "menuItems": {
+    "title": "Menu Items",
+    "subtitle": "Manage the items served at the restaurant",
+    "records": "Items",
+    "image": "Image",
+    "name": "Name",
+    "namePlaceholder": "e.g. Grilled Octopus",
+    "category": "Category",
+    "categoryPlaceholder": "e.g. Appetizers",
+    "description": "Description",
+    "descriptionPlaceholder": "Short description of the dish...",
+    "price": "Price",
+    "available": "Available",
+    "availableYes": "Available",
+    "availableNo": "Unavailable",
+    "notes": "Notes",
+    "addItem": "Add Item",
+    "editItem": "Edit Item",
+    "confirmDelete": "Are you sure you want to delete this menu item?",
+    "save": "Save",
+    "cancel": "Cancel",
+    "creating": "Creating...",
+    "saving": "Saving..."
   },
   "providers": {
     "title": "Providers",
