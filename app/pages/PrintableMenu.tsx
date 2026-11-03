@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import QRCode from "qrcode";
 import { X, Printer } from "lucide-react";
@@ -11,6 +11,98 @@ import { MenuItem } from "../lib/dynamodb";
  * restaurant page — the QR regenerates automatically.
  */
 const FACEBOOK_URL = "https://facebook.com/coralreefandbeef";
+
+/**
+ * Renders a "Follow us" QR card styled after the social-media sticker look:
+ * a rounded tile with a blue Facebook gradient, white rounded QR modules, and a
+ * "Follow us" label with a Facebook icon badge. Drawn as inline SVG so it scales
+ * and prints crisply.
+ */
+function FollowUsQR({ url }: { url: string }) {
+  const matrix = useMemo(() => {
+    try {
+      const qr = QRCode.create(url, { errorCorrectionLevel: "M" });
+      const size = qr.modules.size;
+      const data = qr.modules.data;
+      const rows: boolean[][] = [];
+      for (let r = 0; r < size; r++) {
+        const row: boolean[] = [];
+        for (let c = 0; c < size; c++) row.push(!!data[r * size + c]);
+        rows.push(row);
+      }
+      return { size, rows };
+    } catch (err) {
+      console.error("Failed to build QR matrix:", err);
+      return null;
+    }
+  }, [url]);
+
+  if (!matrix) return null;
+
+  const { size, rows } = matrix;
+  const quiet = 2; // quiet-zone modules
+  const total = size + quiet * 2;
+  const cell = 8; // px per module in the SVG coordinate space
+  const qrPx = total * cell;
+  // Card padding around the QR, and extra room at the bottom for the label.
+  const padX = 22;
+  const padTop = 22;
+  const labelH = 52;
+  const cardW = qrPx + padX * 2;
+  const cardH = qrPx + padTop + labelH;
+  const radius = cell * 0.42; // rounded module corners
+
+  return (
+    <svg
+      className="pm-qr"
+      viewBox={`0 0 ${cardW} ${cardH}`}
+      role="img"
+      aria-label="Síguenos en Facebook (código QR)"
+    >
+      <defs>
+        <linearGradient id="pmFbGrad" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#2a8bf2" />
+          <stop offset="1" stopColor="#1559c6" />
+        </linearGradient>
+      </defs>
+
+      {/* Card */}
+      <rect x="0" y="0" width={cardW} height={cardH} rx="26" fill="url(#pmFbGrad)" />
+
+      {/* White QR modules (light dots on the colored card) */}
+      <g transform={`translate(${padX}, ${padTop})`}>
+        {rows.flatMap((row, r) =>
+          row.map((on, c) =>
+            on ? (
+              <rect
+                key={`${r}-${c}`}
+                x={(c + quiet) * cell}
+                y={(r + quiet) * cell}
+                width={cell}
+                height={cell}
+                rx={radius}
+                ry={radius}
+                fill="#ffffff"
+              />
+            ) : null
+          )
+        )}
+      </g>
+
+      {/* Follow us label */}
+      <g transform={`translate(${padX}, ${padTop + qrPx + 6})`}>
+        <circle cx="16" cy="16" r="16" fill="#ffffff" />
+        <path
+          d="M19.6 16.2h-2.3V26h-3.6v-9.8h-1.6v-3h1.6v-1.9c0-1.6.8-4 4-4l2.6.01v2.9h-1.9c-.3 0-.7.3-.7.9v2h2.6l-.3 3z"
+          fill="#1877f2"
+        />
+        <text x="40" y="22" className="pm-qr-follow" fill="#ffffff">
+          Follow us
+        </text>
+      </g>
+    </svg>
+  );
+}
 
 /**
  * Printable, print-optimized version of the menu that mirrors the branded
@@ -165,18 +257,6 @@ export function PrintableMenu({
   items: MenuItem[];
   onClose: () => void;
 }) {
-  const [qrDataUrl, setQrDataUrl] = useState("");
-
-  useEffect(() => {
-    QRCode.toDataURL(FACEBOOK_URL, {
-      margin: 1,
-      width: 320,
-      color: { dark: "#1e3a5f", light: "#00000000" },
-    })
-      .then(setQrDataUrl)
-      .catch((err) => console.error("Failed to generate QR code:", err));
-  }, []);
-
   // Close on Escape.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -244,10 +324,7 @@ export function PrintableMenu({
             ))}
 
             <div className="pm-social">
-              {qrDataUrl && (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={qrDataUrl} alt="Código QR de Facebook" className="pm-qr" />
-              )}
+              <FollowUsQR url={FACEBOOK_URL} />
               <div className="pm-social-text">
                 <div className="pm-social-title">¡Síguenos en Facebook!</div>
                 <Flourish />
