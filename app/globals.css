@@ -314,3 +314,59 @@
   .pm-section,.pm-social,.pm-item{break-inside:avoid;page-break-inside:avoid}
 }
 @page{size:Letter portrait;margin:12mm}
+
+/* ============================================================
+   Printable Flyer (branded "COMBOS DEL MAR" layout)
+   ============================================================ */
+.pf-page{width:816px;min-height:1056px;background:#fbf4ea;box-shadow:0 10px 40px rgba(0,0,0,.4);position:relative;color:#1e3a5f}
+.pf-frame{position:absolute;inset:18px;border:2px solid #2d4f7c;border-radius:14px;padding:30px 48px 0;overflow:hidden;display:flex;flex-direction:column}
+.pf-frame::before{content:"";position:absolute;inset:7px;border:1px solid #6b8cae;border-radius:9px;pointer-events:none}
+
+/* Header */
+.pf-brand{display:flex;flex-direction:column;align-items:center;margin-top:4px}
+.pf-brand-icon{width:52px;height:52px;object-fit:contain;margin-bottom:2px}
+.pf-brand-name{font:700 36px/1 "Mounties",Georgia,serif;letter-spacing:3px;color:#2b4a84}
+.pf-brand-sub{font:600 11px/1 "Helvetica Neue",Arial,sans-serif;letter-spacing:5px;color:#6b8cae;margin-top:5px}
+.pf-title{font:400 46px/1 "Mounties",Georgia,serif;letter-spacing:3px;color:#1e3a5f;text-align:center;margin:8px 0 0}
+.pf-eyebrow{font:700 18px/1 "Helvetica Neue",Arial,sans-serif;letter-spacing:4px;color:#e0612f;text-align:center;margin-top:7px}
+.pf-titlerule{height:3px;background:#e0612f;border-radius:2px;margin:12px 0 18px}
+
+/* Body */
+.pf-body{display:grid;grid-template-columns:200px 1fr;gap:22px;flex:1;min-height:0;align-items:start}
+.pf-images{display:flex;flex-direction:column;gap:14px;grid-column:1;grid-row:1;align-self:start}
+.pf-list{grid-column:2;grid-row:1}
+/* Odd pages: flip the image column to the right. */
+.pf-body--right{grid-template-columns:1fr 200px}
+.pf-body--right .pf-images{grid-column:2}
+.pf-body--right .pf-list{grid-column:1}
+.pf-imgtile{background:#f6c4ab;border-radius:14px;padding:12px;display:flex;align-items:center;justify-content:center}
+.pf-imgsquare{width:150px;height:150px;border-radius:12px;background:#fff;border:4px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.12);overflow:hidden;display:flex;align-items:center;justify-content:center}
+.pf-imgsquare img{width:100%;height:100%;object-fit:cover}
+.pf-imgfallback{width:34px;height:34px;color:#c98b6e}
+
+/* Item list */
+.pf-list{display:flex;flex-direction:column}
+.pf-sectiongroup{margin-bottom:14px}
+.pf-sectiongroup:last-child{margin-bottom:0}
+.pf-subhead{font:700 19px/1 "Mounties",Georgia,serif;letter-spacing:.8px;color:#1e3a5f;border-bottom:2px solid #1e3a5f;padding-bottom:7px;margin-bottom:4px}
+.pf-item{padding:8px 0;border-bottom:1px solid #d8c9b6}
+.pf-item:last-child{border-bottom:none}
+.pf-item-top{display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.pf-item-name{font:700 15px/1.15 "Helvetica Neue",Arial,sans-serif;letter-spacing:.4px;color:#1e3a5f}
+.pf-item-price{font:700 17px/1 "Mounties",Georgia,serif;color:#e0612f;white-space:nowrap}
+.pf-item-desc{font:400 12px/1.3 "Helvetica Neue",Arial,sans-serif;color:#2b4a84;margin-top:3px}
+
+/* Footer pill */
+.pf-footer{background:#1e3a5f;color:#fbf4ea;border-radius:12px;text-align:center;padding:16px 20px;margin:20px 0 14px}
+.pf-footer-tagline{font:700 15px/1.2 "Helvetica Neue",Arial,sans-serif;letter-spacing:1.5px}
+.pf-footer-sub{font:400 italic 13px/1 "Georgia",serif;margin-top:5px;color:#cdddea}
+.pf-waveband{position:absolute;left:0;right:0;bottom:0;width:100%;height:52px;opacity:.9}
+
+@media(max-width:860px){.pf-page{width:100%;min-height:0}.pf-frame{position:relative;inset:0;padding:22px 20px 0}.pf-body{grid-template-columns:1fr}.pf-images{flex-direction:row;flex-wrap:wrap;justify-content:center}.pf-title{font-size:42px}}
+
+@media print{
+  .pf-page{width:100%;min-height:auto;box-shadow:none;margin:0;break-after:page;page-break-after:always}
+  .pf-page:last-child{break-after:auto;page-break-after:auto}
+  .pf-frame{position:absolute;inset:14px}
+  .pf-item,.pf-imgtile,.pf-footer,.pf-sectiongroup{break-inside:avoid;page-break-inside:avoid}
+}

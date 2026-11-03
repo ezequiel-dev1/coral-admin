@@ -16,7 +16,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { CurrencyInput } from "@/components/ui/currency-input";
-import { Plus, Pencil, Trash2, ImageOff, Printer } from "lucide-react";
+import { Plus, Pencil, Trash2, ImageOff, Printer, FileText } from "lucide-react";
 import {
   fetchMenuItems,
   createMenuItem,
@@ -27,6 +27,7 @@ import {
 } from "../lib/dynamodb";
 import { getObjectUrl, uploadMenuItemImage } from "../lib/receipts";
 import { PrintableMenu } from "./PrintableMenu";
+import { PrintableFlyer } from "./PrintableFlyer";
 
 const emptyForm: MenuItemInput = {
   name: "",
@@ -107,6 +108,9 @@ export function MenuItemsPage() {
 
   // Printable menu view
   const [showPrintable, setShowPrintable] = useState(false);
+
+  // Printable flyer view
+  const [showFlyer, setShowFlyer] = useState(false);
 
   useEffect(() => {
     loadItems();
@@ -267,6 +271,10 @@ export function MenuItemsPage() {
             <Printer data-icon="inline-start" />
             {t("menuItems.printMenu")}
           </Button>
+          <Button variant="outline" onClick={() => setShowFlyer(true)}>
+            <FileText data-icon="inline-start" />
+            {t("menuItems.printFlyer")}
+          </Button>
           {isAdmin && (
             <Button onClick={openCreate}>
               <Plus data-icon="inline-start" />
@@ -386,6 +394,10 @@ export function MenuItemsPage() {
 
       {showPrintable && (
         <PrintableMenu items={items} onClose={() => setShowPrintable(false)} />
+      )}
+
+      {showFlyer && (
+        <PrintableFlyer items={items} onClose={() => setShowFlyer(false)} />
       )}
     </div>
   );

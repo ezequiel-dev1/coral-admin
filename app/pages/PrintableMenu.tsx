@@ -326,7 +326,6 @@ export function PrintableMenu({
             <div className="pm-social">
               <FollowUsQR url={FACEBOOK_URL} />
               <div className="pm-social-text">
-                <div className="pm-social-title">¡Síguenos en Facebook!</div>
                 <Flourish />
                 <div className="pm-social-sub">
                   Escanea para conocer
