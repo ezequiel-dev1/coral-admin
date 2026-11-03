@@ -13,7 +13,7 @@ function formatCurrency(value: string): string {
   return num.toLocaleString("en-US", {
     style: "currency",
     currency: "USD",
-    minimumFractionDigits: num % 1 === 0 ? 0 : 2,
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
 }

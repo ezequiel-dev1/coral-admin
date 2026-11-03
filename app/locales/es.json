@@ -95,7 +95,11 @@
     "save": "Guardar",
     "cancel": "Cancelar",
     "creating": "Creando...",
-    "saving": "Guardando..."
+    "saving": "Guardando...",
+    "printMenu": "Menú Imprimible",
+    "printMenuTitle": "Menú Imprimible",
+    "print": "Imprimir",
+    "close": "Cerrar"
   },
   "providers": {
     "title": "Proveedores",

@@ -95,7 +95,11 @@
     "save": "Save",
     "cancel": "Cancel",
     "creating": "Creating...",
-    "saving": "Saving..."
+    "saving": "Saving...",
+    "printMenu": "Printable Menu",
+    "printMenuTitle": "Printable Menu",
+    "print": "Print",
+    "close": "Close"
   },
   "providers": {
     "title": "Providers",

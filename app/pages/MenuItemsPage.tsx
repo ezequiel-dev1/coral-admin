@@ -16,7 +16,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { CurrencyInput } from "@/components/ui/currency-input";
-import { Plus, Pencil, Trash2, ImageOff } from "lucide-react";
+import { Plus, Pencil, Trash2, ImageOff, Printer } from "lucide-react";
 import {
   fetchMenuItems,
   createMenuItem,
@@ -26,6 +26,7 @@ import {
   MenuItemInput,
 } from "../lib/dynamodb";
 import { getObjectUrl, uploadMenuItemImage } from "../lib/receipts";
+import { PrintableMenu } from "./PrintableMenu";
 
 const emptyForm: MenuItemInput = {
   name: "",
@@ -38,7 +39,13 @@ const emptyForm: MenuItemInput = {
   order: 0,
 };
 
-function MenuItemImage({ imageKey }: { imageKey: string }) {
+function MenuItemImage({
+  imageKey,
+  onPreview,
+}: {
+  imageKey: string;
+  onPreview?: (url: string) => void;
+}) {
   const [url, setUrl] = useState("");
 
   useEffect(() => {
@@ -63,8 +70,19 @@ function MenuItemImage({ imageKey }: { imageKey: string }) {
   }
 
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img src={url} alt="" className="h-10 w-10 rounded-md object-cover" />
+    <button
+      type="button"
+      onClick={() => onPreview?.(url)}
+      className="rounded-md outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
+      aria-label="View image full size"
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={url}
+        alt=""
+        className="h-10 w-10 cursor-pointer rounded-md object-cover transition-transform hover:scale-105"
+      />
+    </button>
   );
 }
 
@@ -83,6 +101,12 @@ export function MenuItemsPage() {
   // Image picker state
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
+
+  // Full-size image preview state
+  const [fullImageUrl, setFullImageUrl] = useState("");
+
+  // Printable menu view
+  const [showPrintable, setShowPrintable] = useState(false);
 
   useEffect(() => {
     loadItems();
@@ -177,7 +201,9 @@ export function MenuItemsPage() {
         accessorKey: "imageKey",
         header: t("menuItems.image"),
         size: 70,
-        cell: ({ getValue }) => <MenuItemImage imageKey={(getValue() as string) || ""} />,
+        cell: ({ getValue }) => (
+          <MenuItemImage imageKey={(getValue() as string) || ""} onPreview={setFullImageUrl} />
+        ),
       },
       {
         accessorKey: "order",
@@ -236,12 +262,18 @@ export function MenuItemsPage() {
           <h1>{t("menuItems.title")}</h1>
           <p className="page-subtitle">{t("menuItems.subtitle")} — {items.length} {t("menuItems.records").toLowerCase()}</p>
         </div>
-        {isAdmin && (
-          <Button onClick={openCreate}>
-            <Plus data-icon="inline-start" />
-            {t("menuItems.addItem")}
+        <div className="flex flex-row items-center gap-2" style={{ flexDirection: "row" }}>
+          <Button variant="outline" onClick={() => setShowPrintable(true)}>
+            <Printer data-icon="inline-start" />
+            {t("menuItems.printMenu")}
           </Button>
-        )}
+          {isAdmin && (
+            <Button onClick={openCreate}>
+              <Plus data-icon="inline-start" />
+              {t("menuItems.addItem")}
+            </Button>
+          )}
+        </div>
       </div>
 
       <CoralDataGrid
@@ -334,6 +366,27 @@ export function MenuItemsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Full-size image preview */}
+      <Dialog open={!!fullImageUrl} onOpenChange={(open) => !open && setFullImageUrl("")}>
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>{t("menuItems.image")}</DialogTitle>
+          </DialogHeader>
+          {fullImageUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={fullImageUrl}
+              alt=""
+              className="max-h-[75vh] w-full rounded-md object-contain"
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {showPrintable && (
+        <PrintableMenu items={items} onClose={() => setShowPrintable(false)} />
+      )}
     </div>
   );
 }
