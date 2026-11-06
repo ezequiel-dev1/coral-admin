@@ -10,9 +10,9 @@ function parseCurrencyValue(value: string): string {
 function formatCurrency(value: string): string {
   const num = parseFloat(parseCurrencyValue(value));
   if (isNaN(num)) return "";
-  return num.toLocaleString("en-US", {
+  return num.toLocaleString("es-MX", {
     style: "currency",
-    currency: "USD",
+    currency: "MXN",
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });

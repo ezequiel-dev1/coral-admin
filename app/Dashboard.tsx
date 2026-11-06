@@ -6,25 +6,15 @@ import { useTranslation } from "./i18n/LanguageProvider";
 import { ThemeToggle } from "./ThemeToggle";
 import { OverviewPage } from "./pages/OverviewPage";
 import { MenuItemsPage } from "./pages/MenuItemsPage";
-import { ProvidersPage } from "./pages/ProvidersPage";
-import { InvestmentsPage } from "./pages/InvestmentsPage";
-import { SharedLoansPage } from "./pages/SharedLoansPage";
-import { ExpensesPage } from "./pages/ExpensesPage";
-import { AccountingPage } from "./pages/AccountingPage";
-import { InvoicesPage } from "./pages/InvoicesPage";
-import { LedgerPage } from "./pages/LedgerPage";
+import { MenuIngredientsPage } from "./pages/MenuIngredientsPage";
+import { CheckoutPage } from "./pages/CheckoutPage";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import {
   LayoutDashboard,
   UtensilsCrossed,
-  Users,
-  TrendingUp,
-  CreditCard,
-  DollarSign,
-  BookOpen,
-  FileText,
-  BookMarked,
+  Carrot,
+  ShoppingCart,
   Search,
   Bell,
   LogOut,
@@ -45,7 +35,7 @@ export function Dashboard() {
   const { user, logout } = useAuth();
   const { lang, setLang, t } = useTranslation();
 
-  const validTabs = ["Overview", "Menu Items", "Providers", "Investments", "Shared Loans", "Expenses", "Accounting", "Invoices", "Ledger"];
+  const validTabs = ["Overview", "Checkout", "Menu Items", "Menu Ingredients"];
 
   function getTabFromHash(): string {
     if (typeof window === "undefined") return "Overview";
@@ -87,14 +77,9 @@ export function Dashboard() {
 
   const allNavItems = [
     { key: "Overview", label: t("nav.overview"), icon: LayoutDashboard, public: true },
+    { key: "Checkout", label: t("nav.checkout"), icon: ShoppingCart, public: false },
     { key: "Menu Items", label: t("nav.menuItems"), icon: UtensilsCrossed, public: false },
-    { key: "Providers", label: t("nav.providers"), icon: Users, public: true },
-    { key: "Investments", label: t("nav.investments"), icon: TrendingUp, public: false },
-    { key: "Shared Loans", label: t("nav.sharedLoans"), icon: CreditCard, public: false },
-    { key: "Expenses", label: t("nav.expenses"), icon: DollarSign, public: false },
-    { key: "Accounting", label: t("nav.accounting"), icon: BookOpen, public: false },
-    { key: "Invoices", label: t("nav.invoices"), icon: FileText, public: false },
-    { key: "Ledger", label: t("nav.ledger"), icon: BookMarked, public: false },
+    { key: "Menu Ingredients", label: t("nav.menuIngredients"), icon: Carrot, public: false },
   ];
 
   const navItems = allNavItems.filter((item) => item.public || isPrivileged);
@@ -180,14 +165,9 @@ export function Dashboard() {
 
         <div className="content">
           {tab === "Overview" && <OverviewPage />}
+          {isPrivileged && tab === "Checkout" && <CheckoutPage />}
           {isPrivileged && tab === "Menu Items" && <MenuItemsPage />}
-          {tab === "Providers" && <ProvidersPage />}
-          {isPrivileged && tab === "Investments" && <InvestmentsPage />}
-          {isPrivileged && tab === "Shared Loans" && <SharedLoansPage />}
-          {isPrivileged && tab === "Expenses" && <ExpensesPage />}
-          {isPrivileged && tab === "Accounting" && <AccountingPage />}
-          {isPrivileged && tab === "Invoices" && <InvoicesPage />}
-          {isPrivileged && tab === "Ledger" && <LedgerPage />}
+          {isPrivileged && tab === "Menu Ingredients" && <MenuIngredientsPage />}
         </div>
       </section>
     </main>
