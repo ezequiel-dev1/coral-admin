@@ -14,9 +14,3 @@ resource "aws_dynamodb_table" "feedback" {
   }
 }
 
-# This table was created outside Terraform (AWS CLI) before this file existed.
-# The import block lets `terraform apply` adopt it instead of failing on create.
-import {
-  to = aws_dynamodb_table.feedback
-  id = "coral-feedback"
-}

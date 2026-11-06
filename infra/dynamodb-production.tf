@@ -39,10 +39,3 @@ resource "aws_dynamodb_table" "production" {
   }
 }
 
-# These tables were created with the AWS CLI first. The import blocks let
-# `terraform apply` adopt them instead of failing on create.
-import {
-  for_each = local.production_tables
-  to       = aws_dynamodb_table.production[each.key]
-  id       = "coral-prod-${each.key}"
-}
