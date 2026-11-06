@@ -70,6 +70,11 @@ export function Dashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   useEffect(() => {
+    // On narrow screens the sidebar is a fixed icon rail
+    if (window.matchMedia("(max-width: 700px)").matches) setSidebarOpen(false);
+  }, []);
+
+  useEffect(() => {
     setDateStr(new Date().toLocaleDateString(lang, { weekday: "long", day: "numeric", month: "long" }));
   }, [lang]);
 
@@ -145,7 +150,7 @@ export function Dashboard() {
       <section className={`workspace ${sidebarOpen ? "" : "workspace-expanded"}`}>
         <header className="topbar">
           <div className="crumb">
-            <Button variant="ghost" size="icon-sm" onClick={() => setSidebarOpen(!sidebarOpen)} aria-label="Toggle sidebar" className="text-[var(--text-muted)] hover:text-[#3D4F9B]">
+            <Button variant="ghost" size="icon-sm" onClick={() => setSidebarOpen(!sidebarOpen)} aria-label="Toggle sidebar" className="sidebar-toggle text-[var(--text-muted)] hover:text-[#3D4F9B]">
               {sidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeftOpen size={18} />}
             </Button>
             <span>{dateStr}</span>

@@ -1509,7 +1509,7 @@ ${
 
       {/* Cash reconciliation dialog */}
       <Dialog open={showReconcile} onOpenChange={setShowReconcile}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-h-[90dvh] overflow-y-auto overscroll-contain sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{t("checkout.cashReconciliation")}</DialogTitle>
           </DialogHeader>
