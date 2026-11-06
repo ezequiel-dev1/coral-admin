@@ -9,6 +9,7 @@ import { MenuItemsPage } from "./pages/MenuItemsPage";
 import { MenuIngredientsPage } from "./pages/MenuIngredientsPage";
 import { CheckoutPage } from "./pages/CheckoutPage";
 import { OrdersPage } from "./pages/OrdersPage";
+import { ReservationsPage } from "./pages/ReservationsPage";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import {
@@ -17,6 +18,7 @@ import {
   Carrot,
   ShoppingCart,
   ClipboardList,
+  CalendarDays,
   Search,
   Bell,
   LogOut,
@@ -37,7 +39,7 @@ export function Dashboard() {
   const { user, logout } = useAuth();
   const { lang, setLang, t } = useTranslation();
 
-  const validTabs = ["Overview", "Orders", "Checkout", "Menu Items", "Menu Ingredients"];
+  const validTabs = ["Overview", "Orders", "Reservations", "Checkout", "Menu Items", "Menu Ingredients"];
 
   function getTabFromHash(): string {
     if (typeof window === "undefined") return "Overview";
@@ -85,6 +87,7 @@ export function Dashboard() {
   const allNavItems = [
     { key: "Overview", label: t("nav.overview"), icon: LayoutDashboard, public: true },
     { key: "Orders", label: t("nav.orders"), icon: ClipboardList, public: false },
+    { key: "Reservations", label: t("nav.reservations"), icon: CalendarDays, public: false },
     { key: "Checkout", label: t("nav.checkout"), icon: ShoppingCart, public: false },
     { key: "Menu Items", label: t("nav.menuItems"), icon: UtensilsCrossed, public: false },
     { key: "Menu Ingredients", label: t("nav.menuIngredients"), icon: Carrot, public: false },
@@ -174,6 +177,7 @@ export function Dashboard() {
         <div className="content">
           {tab === "Overview" && <OverviewPage />}
           {isPrivileged && tab === "Orders" && <OrdersPage />}
+          {isPrivileged && tab === "Reservations" && <ReservationsPage />}
           {isPrivileged && tab === "Checkout" && <CheckoutPage />}
           {isPrivileged && tab === "Menu Items" && <MenuItemsPage />}
           {isPrivileged && tab === "Menu Ingredients" && <MenuIngredientsPage />}

@@ -950,3 +950,106 @@ export async function deleteOrder(id: string): Promise<void> {
     new DeleteCommand({ TableName: TABLES.orders, Key: { id } })
   );
 }
+
+// --- Reservations ---
+
+export type ReservationStatus =
+  | "pending"
+  | "confirmed"
+  | "seated"
+  | "completed"
+  | "cancelled"
+  | "no-show";
+
+export type Reservation = {
+  id: string;
+  createdAt: string;
+  guestName: string;
+  phone: string;
+  partySize: number;
+  /** Local date, YYYY-MM-DD. */
+  date: string;
+  /** Local time, HH:mm (24h). */
+  time: string;
+  /** Table label, matching the checkout floor plan. Empty if unassigned. */
+  tableLabel: string;
+  status: ReservationStatus;
+  notes: string;
+};
+
+export type ReservationInput = Omit<Reservation, "id" | "createdAt">;
+
+/** All reservations, soonest first. */
+export async function fetchReservations(): Promise<Reservation[]> {
+  const docClient = await getClient();
+  const result = await docClient.send(
+    new ScanCommand({ TableName: TABLES.reservations })
+  );
+  const items = (result.Items || []) as Reservation[];
+  return items.sort((a, b) =>
+    `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`)
+  );
+}
+
+export async function createReservation(input: ReservationInput): Promise<Reservation> {
+  const docClient = await getClient();
+  const record: Reservation = {
+    id: `res-${Date.now()}`,
+    createdAt: new Date().toISOString(),
+    ...input,
+  };
+
+  await docClient.send(
+    new PutCommand({ TableName: TABLES.reservations, Item: record })
+  );
+
+  return record;
+}
+
+export async function updateReservation(id: string, input: ReservationInput): Promise<void> {
+  const docClient = await getClient();
+
+  await docClient.send(
+    new UpdateCommand({
+      TableName: TABLES.reservations,
+      Key: { id },
+      ConditionExpression: "attribute_exists(id)",
+      UpdateExpression:
+        "SET guestName = :guestName, phone = :phone, partySize = :partySize, #d = :date, #t = :time, tableLabel = :tableLabel, #s = :status, notes = :notes",
+      ExpressionAttributeNames: { "#d": "date", "#t": "time", "#s": "status" },
+      ExpressionAttributeValues: {
+        ":guestName": input.guestName,
+        ":phone": input.phone,
+        ":partySize": input.partySize,
+        ":date": input.date,
+        ":time": input.time,
+        ":tableLabel": input.tableLabel,
+        ":status": input.status,
+        ":notes": input.notes,
+      },
+    })
+  );
+}
+
+export async function setReservationStatus(id: string, status: ReservationStatus): Promise<void> {
+  const docClient = await getClient();
+
+  await docClient.send(
+    new UpdateCommand({
+      TableName: TABLES.reservations,
+      Key: { id },
+      ConditionExpression: "attribute_exists(id)",
+      UpdateExpression: "SET #s = :status",
+      ExpressionAttributeNames: { "#s": "status" },
+      ExpressionAttributeValues: { ":status": status },
+    })
+  );
+}
+
+export async function deleteReservation(id: string): Promise<void> {
+  const docClient = await getClient();
+
+  await docClient.send(
+    new DeleteCommand({ TableName: TABLES.reservations, Key: { id } })
+  );
+}

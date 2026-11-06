@@ -26,4 +26,5 @@ export const TABLES = {
   ledger: `${prefix}ledger`,
   orders: `${prefix}orders`,
   feedback: `${prefix}feedback`,
+  reservations: `${prefix}reservations`,
 } as const;
