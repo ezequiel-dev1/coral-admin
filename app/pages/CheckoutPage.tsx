@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "../i18n/LanguageProvider";
 import { useAuth } from "../auth/AuthProvider";
 import { Badge } from "@/components/ui/badge";
@@ -32,6 +32,11 @@ import {
   Landmark,
   SplitSquareHorizontal,
   RotateCcw,
+  Banknote,
+  Printer,
+  Paperclip,
+  Camera,
+  X,
 } from "lucide-react";
 import {
   fetchMenuItems,
@@ -42,6 +47,11 @@ import {
   deleteOrder,
   getOrder,
   fetchOpenChecks,
+  saveCashReconciliation,
+  fetchCashReconciliations,
+  markCashReconciliationReviewed,
+  type CashReconciliation,
+  type CashEvidence,
   saveOpenCheck,
   setOpenCheckTip,
   closeCheckPaid,
@@ -53,8 +63,10 @@ import {
   OrderStatus,
   PaymentMethod,
 } from "../lib/dynamodb";
+import { uploadCorteEvidence, getObjectUrl } from "../lib/receipts";
 import { PaymentQR } from "./PaymentQR";
 import { SeatingChart } from "./SeatingChart";
+import { useIsTouchDevice } from "./IngredientPicker";
 import { SplitCheckDialog, type SplitBucketResult } from "./SplitCheckDialog";
 
 /** Phases of the card-via-QR payment flow. */
@@ -136,6 +148,22 @@ export function CheckoutPage() {
 
   // Recent orders view
   const [showOrders, setShowOrders] = useState(false);
+
+  // End-of-day cash reconciliation (Corte de Caja)
+  const [showReconcile, setShowReconcile] = useState(false);
+  const [openingFloat, setOpeningFloat] = useState("");
+  const [countedCash, setCountedCash] = useState("");
+  const [reconcileComments, setReconcileComments] = useState("");
+  const [reconcileSaving, setReconcileSaving] = useState(false);
+  // Files picked for the corte; uploaded to S3 when saving.
+  const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
+  const evidenceInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const isTouchDevice = useIsTouchDevice();
+  // "new" = fill in today's corte; "history" = review saved ones.
+  const [reconcileView, setReconcileView] = useState<"new" | "history">("new");
+  const [reconciliations, setReconciliations] = useState<CashReconciliation[]>([]);
+  const [expandedCorte, setExpandedCorte] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
@@ -683,6 +711,228 @@ export function CheckoutPage() {
     });
   }
 
+  // Today's paid cash orders (local day), for the end-of-day cash count.
+  const cashToday = useMemo(() => {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const todays = orders.filter(
+      (o) =>
+        o.status === "paid" &&
+        o.paymentMethod === "cash" &&
+        new Date(o.paidAt || o.createdAt).getTime() >= start.getTime()
+    );
+    return {
+      count: todays.length,
+      sales: todays.reduce((s, o) => s + (o.total - (o.tip ?? 0)), 0),
+      tips: todays.reduce((s, o) => s + (o.tip ?? 0), 0),
+      total: todays.reduce((s, o) => s + o.total, 0),
+    };
+  }, [orders]);
+
+  // CurrencyInput reports formatted strings like "$1,234.00"; strip to a number.
+  const parseMoneyInput = (v: string) => parseFloat(v.replace(/[^0-9.]/g, "")) || 0;
+  // Today's paid non-cash orders (card + bank transfer). These go to the bank,
+  // not the drawer, so they're reported alongside the cash count but never
+  // included in the expected cash.
+  const bankToday = useMemo(() => {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const todays = orders.filter(
+      (o) =>
+        o.status === "paid" &&
+        (o.paymentMethod === "card" || o.paymentMethod === "transfer") &&
+        new Date(o.paidAt || o.createdAt).getTime() >= start.getTime()
+    );
+    const sum = (list: Order[], f: (o: Order) => number) =>
+      list.reduce((s, o) => s + f(o), 0);
+    const card = todays.filter((o) => o.paymentMethod === "card");
+    const transfer = todays.filter((o) => o.paymentMethod === "transfer");
+    return {
+      cardCount: card.length,
+      cardTotal: sum(card, (o) => o.total),
+      cardFees: sum(card, (o) => o.processingFee ?? 0),
+      cardNet: sum(card, (o) => o.netAmount ?? o.total),
+      transferCount: transfer.length,
+      transferTotal: sum(transfer, (o) => o.total),
+      total: sum(todays, (o) => o.total),
+    };
+  }, [orders]);
+
+  const expectedCash = parseMoneyInput(openingFloat) + cashToday.total;
+  const cashDifference = parseMoneyInput(countedCash) - expectedCash;
+
+  /** Print the reconciliation as a standalone receipt-style page in a popup. */
+  function openPrintWindow(): Window | null {
+    return window.open("", "_blank", "width=420,height=640");
+  }
+
+  /** `win` may be pre-opened (before an await) so popup blockers allow it. */
+  function printReconciliation(rec: CashReconciliation, win?: Window | null) {
+    const esc = (s: string) =>
+      s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const diff = rec.difference;
+    const balanced = Math.abs(diff) < 0.005;
+    const diffLabel = balanced
+      ? t("checkout.balanced")
+      : diff > 0
+        ? t("checkout.over")
+        : t("checkout.short");
+    const row = (label: string, value: string, bold = false) =>
+      `<div class="row${bold ? " bold" : ""}"><span>${esc(label)}</span><span>${esc(value)}</span></div>`;
+
+    const html = `<!doctype html><html><head><meta charset="utf-8" />
+<title>${esc(t("checkout.cashReconciliation"))}</title>
+<style>
+  body{font:14px -apple-system,Helvetica,Arial,sans-serif;max-width:320px;margin:24px auto;color:#000}
+  h1{font-size:18px;margin:0 0 4px;text-align:center}
+  .sub{text-align:center;font-size:12px;color:#555;margin-bottom:12px}
+  .row{display:flex;justify-content:space-between;padding:2px 0}
+  .bold{font-weight:700;border-top:1px solid #000;margin-top:4px;padding-top:4px}
+  .comments{margin-top:12px;white-space:pre-wrap;font-size:13px}
+  .sig{margin-top:40px;border-top:1px solid #000;text-align:center;font-size:12px;padding-top:4px}
+</style></head><body>
+<h1>${esc(t("checkout.cashReconciliation"))}</h1>
+<div class="sub">${esc(formatDate(rec.createdAt))} · ${rec.cashOrderCount} ${esc(t("checkout.ordersLabel"))}</div>
+${row(t("checkout.openingFloat"), formatMoney(rec.openingFloat))}
+${row(t("checkout.cashSales"), formatMoney(rec.cashSales))}
+${row(t("checkout.cashTips"), formatMoney(rec.cashTips))}
+${row(t("checkout.expectedCash"), formatMoney(rec.expectedCash), true)}
+${row(t("checkout.countedCash"), formatMoney(rec.countedCash))}
+${row(diffLabel, formatMoney(Math.abs(diff)), true)}
+<div class="sub" style="margin-top:14px"><strong>${esc(t("checkout.bankTransactions"))}</strong></div>
+${row(`${t("checkout.cardSales")} (${rec.cardCount})`, formatMoney(rec.cardTotal))}
+${row(t("checkout.processingFee"), "− " + formatMoney(rec.cardFees))}
+${row(`${t("checkout.transferSales")} (${rec.transferCount})`, formatMoney(rec.transferTotal))}
+${row(t("checkout.totalBank"), formatMoney(rec.bankTotal), true)}
+${
+  rec.comments.trim()
+    ? `<div class="comments"><strong>${esc(t("checkout.comments"))}:</strong><br/>${esc(rec.comments.trim())}</div>`
+    : ""
+}
+${
+  (rec.evidence ?? []).length > 0
+    ? `<div class="comments"><strong>${esc(t("checkout.evidence"))} (${rec.evidence!.length}):</strong><br/>${rec.evidence!.map((e) => esc(e.name)).join("<br/>")}</div>`
+    : ""
+}
+<div class="sig">${esc(rec.createdBy)}</div>
+${
+  rec.reviewedBy
+    ? `<div class="sub" style="margin-top:8px">${esc(t("checkout.reviewedBy"))}: ${esc(rec.reviewedBy)} · ${esc(formatDate(rec.reviewedAt || ""))}</div>`
+    : ""
+}
+</body></html>`;
+
+    const w = win ?? openPrintWindow();
+    if (!w) return; // popup blocked
+    w.document.open();
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    w.print();
+  }
+
+  /** Save today's reconciliation so other managers can review it, then print. */
+  async function saveAndPrintReconciliation() {
+    // Open the print window now, inside the click, so it isn't popup-blocked.
+    const printWin = openPrintWindow();
+    setReconcileSaving(true);
+    try {
+      // Upload attached evidence first so the record only references stored files.
+      const evidence: CashEvidence[] = [];
+      for (const file of evidenceFiles) {
+        const key = await uploadCorteEvidence(file);
+        evidence.push({
+          key,
+          name: file.name,
+          contentType: file.type || "application/octet-stream",
+        });
+      }
+      const saved = await saveCashReconciliation({
+        evidence,
+        createdBy: user?.name || user?.email || "",
+        openingFloat: parseMoneyInput(openingFloat),
+        cashSales: cashToday.sales,
+        cashTips: cashToday.tips,
+        expectedCash,
+        countedCash: parseMoneyInput(countedCash),
+        difference: cashDifference,
+        cashOrderCount: cashToday.count,
+        cardCount: bankToday.cardCount,
+        cardTotal: bankToday.cardTotal,
+        cardFees: bankToday.cardFees,
+        transferCount: bankToday.transferCount,
+        transferTotal: bankToday.transferTotal,
+        bankTotal: bankToday.total,
+        comments: reconcileComments.trim(),
+      });
+      setReconciliations((prev) => [saved, ...prev]);
+      // Reset the form for the next corte and show it in the history list.
+      setOpeningFloat("");
+      setCountedCash("");
+      setReconcileComments("");
+      setEvidenceFiles([]);
+      setReconcileView("history");
+      setExpandedCorte(saved.id);
+      printReconciliation(saved, printWin);
+    } catch (err) {
+      printWin?.close();
+      console.error("Failed to save cash reconciliation:", err);
+      alert(t("checkout.corteSaveError"));
+    } finally {
+      setReconcileSaving(false);
+    }
+  }
+
+  /** Open the dialog and load saved cortes for review. */
+  async function openReconcile() {
+    setShowReconcile(true);
+    try {
+      setReconciliations(await fetchCashReconciliations());
+    } catch (err) {
+      console.error("Failed to load cash reconciliations:", err);
+    }
+  }
+
+  /** Add picked files (max 10 MB each) to the pending evidence list. */
+  function addEvidenceFiles(list: FileList | null) {
+    if (!list) return;
+    const MAX_BYTES = 10 * 1024 * 1024;
+    const picked = Array.from(list).filter((f) => f.size <= MAX_BYTES);
+    if (picked.length < list.length) alert(t("checkout.evidenceTooLarge"));
+    setEvidenceFiles((prev) => [...prev, ...picked]);
+    // Allow re-picking the same file later.
+    if (evidenceInputRef.current) evidenceInputRef.current.value = "";
+    if (cameraInputRef.current) cameraInputRef.current.value = "";
+  }
+
+  /** Open a saved evidence file in a new tab via a short-lived signed URL. */
+  async function openEvidence(ev: CashEvidence) {
+    // Open the tab inside the click, then point it at the URL (avoids popup blocking).
+    const w = window.open("", "_blank");
+    try {
+      const url = await getObjectUrl(ev.key);
+      if (w) w.location.href = url;
+    } catch (err) {
+      w?.close();
+      console.error("Failed to open evidence:", err);
+    }
+  }
+
+  /** A manager marks a saved corte as reviewed. */
+  async function reviewCorte(rec: CashReconciliation) {
+    const reviewer = user?.name || user?.email || "";
+    try {
+      const reviewedAt = await markCashReconciliationReviewed(rec.id, reviewer);
+      setReconciliations((prev) =>
+        prev.map((r) =>
+          r.id === rec.id ? { ...r, reviewedBy: reviewer, reviewedAt } : r
+        )
+      );
+    } catch (err) {
+      console.error("Failed to mark corte reviewed:", err);
+    }
+  }
+
   function formatDay(iso: string): string {
     if (!iso) return "";
     return new Date(iso).toLocaleDateString(lang, {
@@ -707,10 +957,16 @@ export function CheckoutPage() {
           <h1>{t("checkout.title")}</h1>
           <p className="page-subtitle">{t("checkout.subtitle")}</p>
         </div>
-        <Button variant="outline" onClick={() => setShowOrders(true)}>
-          <Receipt data-icon="inline-start" />
-          {t("checkout.recentOrders")}
-        </Button>
+        <div style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <Button variant="outline" onClick={openReconcile}>
+            <Banknote data-icon="inline-start" />
+            {t("checkout.cashReconciliation")}
+          </Button>
+          <Button variant="outline" onClick={() => setShowOrders(true)}>
+            <Receipt data-icon="inline-start" />
+            {t("checkout.recentOrders")}
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_360px] lg:items-start">
@@ -1250,6 +1506,313 @@ export function CheckoutPage() {
           t={t}
         />
       )}
+
+      {/* Cash reconciliation dialog */}
+      <Dialog open={showReconcile} onOpenChange={setShowReconcile}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("checkout.cashReconciliation")}</DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-[var(--text-muted)]">
+            {formatDay(new Date().toISOString())} · {cashToday.count}{" "}
+            {t("checkout.ordersLabel")}
+          </p>
+
+          {/* Switch between filling in a new corte and reviewing saved ones */}
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant={reconcileView === "new" ? "default" : "outline"}
+              onClick={() => setReconcileView("new")}
+            >
+              {t("checkout.newCorte")}
+            </Button>
+            <Button
+              size="sm"
+              variant={reconcileView === "history" ? "default" : "outline"}
+              onClick={() => setReconcileView("history")}
+            >
+              {t("checkout.savedCortes")} ({reconciliations.length})
+            </Button>
+          </div>
+
+          {reconcileView === "history" ? (
+            <div className="flex max-h-[55vh] flex-col gap-2 overflow-y-auto">
+              {reconciliations.length === 0 && (
+                <p className="py-6 text-center text-sm text-[var(--text-muted)]">
+                  {t("checkout.noCortes")}
+                </p>
+              )}
+              {reconciliations.map((rec) => {
+                const balanced = Math.abs(rec.difference) < 0.005;
+                const expanded = expandedCorte === rec.id;
+                return (
+                  <div
+                    key={rec.id}
+                    className="rounded-xl border border-input bg-[var(--surface)] p-3 text-sm"
+                  >
+                    <button
+                      type="button"
+                      className="flex w-full items-center justify-between text-left"
+                      onClick={() => setExpandedCorte(expanded ? null : rec.id)}
+                    >
+                      <span>
+                        <span className="font-medium">{formatDate(rec.createdAt)}</span>
+                        <span className="block text-xs text-[var(--text-muted)]">
+                          {rec.createdBy}
+                        </span>
+                      </span>
+                      <span className="flex flex-col items-end">
+                        <span
+                          className={`font-semibold ${balanced ? "text-primary" : "text-destructive"}`}
+                        >
+                          {balanced
+                            ? t("checkout.balanced")
+                            : `${rec.difference > 0 ? t("checkout.over") : t("checkout.short")} ${formatMoney(Math.abs(rec.difference))}`}
+                        </span>
+                        <span className="text-xs text-[var(--text-muted)]">
+                          {rec.reviewedBy
+                            ? `${t("checkout.reviewedBy")}: ${rec.reviewedBy}`
+                            : t("checkout.pendingReview")}
+                        </span>
+                      </span>
+                    </button>
+
+                    {expanded && (
+                      <div className="mt-2 border-t border-[var(--border)] pt-2">
+                        {(
+                          [
+                            [t("checkout.openingFloat"), rec.openingFloat],
+                            [t("checkout.cashSales"), rec.cashSales],
+                            [t("checkout.cashTips"), rec.cashTips],
+                            [t("checkout.expectedCash"), rec.expectedCash],
+                            [t("checkout.countedCash"), rec.countedCash],
+                            [`${t("checkout.cardSales")} (${rec.cardCount})`, rec.cardTotal],
+                            [`${t("checkout.transferSales")} (${rec.transferCount})`, rec.transferTotal],
+                            [t("checkout.totalBank"), rec.bankTotal],
+                          ] as [string, number][]
+                        ).map(([label, value]) => (
+                          <div key={label} className="flex justify-between">
+                            <span className="text-[var(--text-muted)]">{label}</span>
+                            <span>{formatMoney(value)}</span>
+                          </div>
+                        ))}
+                        {rec.comments && (
+                          <p className="mt-2 whitespace-pre-wrap text-xs">
+                            <strong>{t("checkout.comments")}:</strong> {rec.comments}
+                          </p>
+                        )}
+                        {(rec.evidence ?? []).length > 0 && (
+                          <div className="mt-2 flex flex-col gap-1">
+                            <span className="text-xs font-semibold">{t("checkout.evidence")}</span>
+                            {(rec.evidence ?? []).map((ev) => (
+                              <button
+                                key={ev.key}
+                                type="button"
+                                className="flex items-center gap-1 text-left text-xs text-primary underline"
+                                onClick={() => openEvidence(ev)}
+                              >
+                                <Paperclip size={12} />
+                                <span className="truncate">{ev.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        <div className="mt-2 flex justify-end gap-2">
+                          {!rec.reviewedBy && (
+                            <Button size="sm" variant="outline" onClick={() => reviewCorte(rec)}>
+                              <CheckCircle2 data-icon="inline-start" />
+                              {t("checkout.markReviewed")}
+                            </Button>
+                          )}
+                          <Button size="sm" variant="outline" onClick={() => printReconciliation(rec)}>
+                            <Printer data-icon="inline-start" />
+                            {t("checkout.print")}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1">
+              <Label>{t("checkout.openingFloat")}</Label>
+              <CurrencyInput
+                value={openingFloat}
+                onChange={setOpeningFloat}
+                step={50}
+                placeholder="0.00"
+              />
+            </div>
+
+            <div className="rounded-xl border border-input bg-[var(--surface-muted)] p-3 text-sm">
+              <div className="flex justify-between">
+                <span className="text-[var(--text-muted)]">{t("checkout.cashSales")}</span>
+                <span>{formatMoney(cashToday.sales)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[var(--text-muted)]">{t("checkout.cashTips")}</span>
+                <span>{formatMoney(cashToday.tips)}</span>
+              </div>
+              <div className="mt-1 flex justify-between border-t border-[var(--border)] pt-1 font-semibold">
+                <span>{t("checkout.expectedCash")}</span>
+                <span>{formatMoney(expectedCash)}</span>
+              </div>
+            </div>
+
+            {/* Bank transactions: card + transfer sales (not part of the drawer) */}
+            <div className="rounded-xl border border-input bg-[var(--surface-muted)] p-3 text-sm">
+              <div className="mb-1 font-semibold">{t("checkout.bankTransactions")}</div>
+              <div className="flex justify-between">
+                <span className="text-[var(--text-muted)]">
+                  {t("checkout.cardSales")} ({bankToday.cardCount})
+                </span>
+                <span>{formatMoney(bankToday.cardTotal)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[var(--text-muted)]">{t("checkout.processingFee")}</span>
+                <span>− {formatMoney(bankToday.cardFees)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[var(--text-muted)]">
+                  {t("checkout.transferSales")} ({bankToday.transferCount})
+                </span>
+                <span>{formatMoney(bankToday.transferTotal)}</span>
+              </div>
+              <div className="mt-1 flex justify-between border-t border-[var(--border)] pt-1 font-semibold">
+                <span>{t("checkout.totalBank")}</span>
+                <span>{formatMoney(bankToday.total)}</span>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1">
+              <Label>{t("checkout.countedCash")}</Label>
+              <CurrencyInput
+                value={countedCash}
+                onChange={setCountedCash}
+                step={50}
+                placeholder="0.00"
+              />
+            </div>
+
+            {/* Difference between counted and expected cash */}
+            {countedCash !== "" && (
+              <div
+                className={`flex justify-between rounded-xl border border-input p-3 text-base font-semibold ${
+                  Math.abs(cashDifference) < 0.005
+                    ? "text-primary"
+                    : "text-destructive"
+                }`}
+              >
+                <span>
+                  {Math.abs(cashDifference) < 0.005
+                    ? t("checkout.balanced")
+                    : cashDifference > 0
+                      ? t("checkout.over")
+                      : t("checkout.short")}
+                </span>
+                <span>{formatMoney(Math.abs(cashDifference))}</span>
+              </div>
+            )}
+
+            {/* Evidence (e.g. last-minute purchase receipts) explaining missing cash */}
+            <div className="grid gap-2">
+              <Label>{t("checkout.evidence")}</Label>
+              <input
+                ref={evidenceInputRef}
+                type="file"
+                multiple
+                accept="image/*,application/pdf"
+                className="hidden"
+                onChange={(e) => addEvidenceFiles(e.target.files)}
+              />
+              {/* `capture` makes tablets/phones open the rear camera directly */}
+              <input
+                ref={cameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                className="hidden"
+                onChange={(e) => addEvidenceFiles(e.target.files)}
+              />
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => evidenceInputRef.current?.click()}
+                >
+                  <Paperclip data-icon="inline-start" />
+                  {t("checkout.attachEvidence")}
+                </Button>
+                {/* Camera capture only makes sense on touch devices (tablet/phone) */}
+                {isTouchDevice && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => cameraInputRef.current?.click()}
+                  >
+                    <Camera data-icon="inline-start" />
+                    {t("checkout.takePhoto")}
+                  </Button>
+                )}
+              </div>
+              {evidenceFiles.map((f, i) => (
+                <div
+                  key={`${f.name}-${i}`}
+                  className="flex items-center justify-between rounded-lg border border-input px-2.5 py-1 text-sm"
+                >
+                  <span className="truncate">{f.name}</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t("checkout.removeEvidence")}
+                    title={t("checkout.removeEvidence")}
+                    onClick={() =>
+                      setEvidenceFiles((prev) => prev.filter((_, j) => j !== i))
+                    }
+                  >
+                    <X />
+                  </Button>
+                </div>
+              ))}
+            </div>
+
+            {/* Free-form notes explaining any difference; included in the printout */}
+            <div className="grid gap-2">
+              <Label>{t("checkout.comments")}</Label>
+              <textarea
+                className="w-full min-h-[70px] rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 resize-y"
+                value={reconcileComments}
+                onChange={(e) => setReconcileComments(e.target.value)}
+                placeholder={t("checkout.commentsPlaceholder")}
+              />
+            </div>
+          </div>
+          )}
+
+          {reconcileView === "new" && (
+            <DialogFooter>
+              <Button
+                onClick={saveAndPrintReconciliation}
+                disabled={reconcileSaving || countedCash === ""}
+              >
+                {reconcileSaving ? (
+                  <Loader2 className="animate-spin" data-icon="inline-start" />
+                ) : (
+                  <Printer data-icon="inline-start" />
+                )}
+                {t("checkout.saveAndPrint")}
+              </Button>
+            </DialogFooter>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Recent orders dialog */}
       <Dialog open={showOrders} onOpenChange={setShowOrders}>

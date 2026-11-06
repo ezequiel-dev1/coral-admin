@@ -501,8 +501,104 @@ export async function fetchOrders(): Promise<Order[]> {
   const result = await docClient.send(
     new ScanCommand({ TableName: TABLES.orders })
   );
-  const items = (result.Items || []) as Order[];
+  const items = ((result.Items || []) as Order[]).filter(
+    // Cash reconciliations share this table; they are not orders.
+    (o) => !String(o.id).startsWith(CORTE_ID_PREFIX)
+  );
   return items.sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
+}
+
+// --- Cash reconciliation (Corte de Caja) ---
+
+/** Id prefix that distinguishes reconciliation records from orders. */
+export const CORTE_ID_PREFIX = "corte-";
+
+/** An attached file (e.g. a purchase receipt) stored in S3. */
+export type CashEvidence = {
+  key: string;
+  name: string;
+  contentType: string;
+};
+
+/** A saved end-of-day cash reconciliation, kept for manager review. */
+export type CashReconciliation = {
+  id: string;
+  createdAt: string;
+  createdBy: string;
+  openingFloat: number;
+  cashSales: number;
+  cashTips: number;
+  expectedCash: number;
+  countedCash: number;
+  /** counted − expected: positive = over, negative = short. */
+  difference: number;
+  cashOrderCount: number;
+  cardCount: number;
+  cardTotal: number;
+  cardFees: number;
+  transferCount: number;
+  transferTotal: number;
+  bankTotal: number;
+  comments: string;
+  /** Receipts / proof explaining differences (S3 keys). */
+  evidence?: CashEvidence[];
+  /** Set when another manager marks the corte as reviewed. */
+  reviewedBy?: string;
+  reviewedAt?: string;
+};
+
+export type CashReconciliationInput = Omit<
+  CashReconciliation,
+  "id" | "createdAt" | "reviewedBy" | "reviewedAt"
+>;
+
+/** Persist a reconciliation. Returns the saved record. */
+export async function saveCashReconciliation(
+  input: CashReconciliationInput
+): Promise<CashReconciliation> {
+  const docClient = await getClient();
+  const record: CashReconciliation = {
+    id: `${CORTE_ID_PREFIX}${Date.now()}`,
+    createdAt: new Date().toISOString(),
+    ...input,
+  };
+  await docClient.send(
+    new PutCommand({ TableName: TABLES.orders, Item: record })
+  );
+  return record;
+}
+
+/** All saved reconciliations, newest first. */
+export async function fetchCashReconciliations(): Promise<CashReconciliation[]> {
+  const docClient = await getClient();
+  const result = await docClient.send(
+    new ScanCommand({
+      TableName: TABLES.orders,
+      FilterExpression: "begins_with(id, :p)",
+      ExpressionAttributeValues: { ":p": CORTE_ID_PREFIX },
+    })
+  );
+  const items = (result.Items || []) as CashReconciliation[];
+  return items.sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
+}
+
+/** Record that a manager reviewed a reconciliation. */
+export async function markCashReconciliationReviewed(
+  id: string,
+  reviewer: string
+): Promise<string> {
+  const docClient = await getClient();
+  const reviewedAt = new Date().toISOString();
+  await docClient.send(
+    new UpdateCommand({
+      TableName: TABLES.orders,
+      Key: { id },
+      ConditionExpression: "attribute_exists(id)",
+      UpdateExpression: "SET reviewedBy = :r, reviewedAt = :t",
+      ExpressionAttributeValues: { ":r": reviewer, ":t": reviewedAt },
+    })
+  );
+  return reviewedAt;
 }
 
 /** Read a single order by id — used to poll for card-payment confirmation. */
