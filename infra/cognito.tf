@@ -79,11 +79,13 @@ resource "aws_cognito_user_pool_client" "app" {
   # Callback URLs
   callback_urls = [
     "https://${var.domain_name}/",
+    "https://${var.uat_domain_name}/",
     "http://localhost:3000/", # for local dev
   ]
 
   logout_urls = [
     "https://${var.domain_name}/",
+    "https://${var.uat_domain_name}/",
     "http://localhost:3000/",
   ]
 

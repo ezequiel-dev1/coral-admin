@@ -10,6 +10,6 @@ resource "aws_dynamodb_table" "shared_loans" {
 
   tags = {
     Name        = "coral-shared-loans"
-    Environment = var.environment
+    Environment = "UAT"
   }
 }

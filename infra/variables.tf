@@ -16,6 +16,12 @@ variable "root_domain" {
   default     = "coral.restaurant"
 }
 
+variable "uat_domain_name" {
+  description = "The subdomain that hosts the UAT copy of the app"
+  type        = string
+  default     = "admin-uat.coral.restaurant"
+}
+
 variable "environment" {
   description = "Deployment environment"
   type        = string

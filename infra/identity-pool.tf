@@ -68,13 +68,20 @@ resource "aws_iam_role_policy" "dynamodb_access" {
           "dynamodb:UpdateItem",
           "dynamodb:DeleteItem"
         ]
-        Resource = [
-          aws_dynamodb_table.shared_loans.arn,
-          aws_dynamodb_table.loan_charges.arn,
-          aws_dynamodb_table.investments.arn,
-          aws_dynamodb_table.ledger.arn,
-          aws_dynamodb_table.menu_items.arn
-        ]
+        Resource = concat(
+          [
+            aws_dynamodb_table.shared_loans.arn,
+            aws_dynamodb_table.loan_charges.arn,
+            aws_dynamodb_table.investments.arn,
+            aws_dynamodb_table.ledger.arn,
+            aws_dynamodb_table.menu_items.arn,
+            aws_dynamodb_table.menu_ingredients.arn,
+            aws_dynamodb_table.orders.arn
+          ],
+          # Production tables, same scope as UAT. Feedback is excluded because
+          # it is only written server-side (not via browser Cognito creds).
+          [for k, t in aws_dynamodb_table.production : t.arn if k != "feedback"]
+        )
       },
       {
         Sid       = "ReceiptsS3Access"

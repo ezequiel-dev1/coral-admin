@@ -10,6 +10,6 @@ resource "aws_dynamodb_table" "ledger" {
 
   tags = {
     Name        = "coral-ledger"
-    Environment = var.environment
+    Environment = "UAT"
   }
 }

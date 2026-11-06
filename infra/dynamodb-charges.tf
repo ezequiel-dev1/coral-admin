@@ -16,6 +16,6 @@ resource "aws_dynamodb_table" "loan_charges" {
 
   tags = {
     Name        = "coral-loan-charges"
-    Environment = var.environment
+    Environment = "UAT"
   }
 }

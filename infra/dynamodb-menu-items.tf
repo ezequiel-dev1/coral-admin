@@ -10,6 +10,6 @@ resource "aws_dynamodb_table" "menu_items" {
 
   tags = {
     Name        = "coral-menu-items"
-    Environment = var.environment
+    Environment = "UAT"
   }
 }

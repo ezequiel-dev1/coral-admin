@@ -10,6 +10,6 @@ resource "aws_dynamodb_table" "investments" {
 
   tags = {
     Name        = "coral-investments"
-    Environment = var.environment
+    Environment = "UAT"
   }
 }

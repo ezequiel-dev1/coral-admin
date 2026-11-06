@@ -37,3 +37,20 @@ output "cognito_domain" {
   description = "Cognito hosted UI domain"
   value       = "https://${aws_cognito_user_pool_domain.main.domain}.auth.${var.aws_region}.amazoncognito.com"
 }
+
+# --- UAT site ---
+
+output "uat_cloudfront_distribution_id" {
+  description = "UAT CloudFront distribution ID (needed for cache invalidation on deploy)"
+  value       = aws_cloudfront_distribution.uat_site.id
+}
+
+output "uat_s3_bucket_name" {
+  description = "S3 bucket name for deploying the UAT site assets"
+  value       = aws_s3_bucket.uat_site.id
+}
+
+output "uat_site_url" {
+  description = "The UAT site URL"
+  value       = "https://${var.uat_domain_name}"
+}
