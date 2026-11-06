@@ -225,7 +225,7 @@ export function OverviewPage() {
       <section className="orders-card">
         <div className="card-head">
           <div><p className="eyebrow">{t("overview.kitchen")}</p><h2>{t("overview.ordersInProgress")} <span>4</span></h2></div>
-          <button className="outline">{t("overview.openOrderBoard")}</button>
+          <button className="outline" onClick={() => { window.location.hash = "orders"; }}>{t("overview.openOrderBoard")}</button>
         </div>
         <div className="order-list">
           {orders.map(([table, guest, items, total, eta]) => (

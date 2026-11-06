@@ -33,6 +33,7 @@ import { getObjectUrl, uploadMenuItemImage } from "../lib/receipts";
 import { IngredientPicker, useIsTouchDevice } from "./IngredientPicker";
 import { PrintableMenu } from "./PrintableMenu";
 import { PrintableFlyer } from "./PrintableFlyer";
+import { ModifierGroupsEditor, cleanModifierGroups } from "./ModifierGroupsEditor";
 
 const emptyForm: MenuItemInput = {
   name: "",
@@ -44,6 +45,7 @@ const emptyForm: MenuItemInput = {
   notes: "",
   order: 0,
   ingredientIds: [],
+  modifierGroups: [],
 };
 
 function MenuItemImage({
@@ -165,6 +167,7 @@ export function MenuItemsPage() {
       notes: item.notes,
       order: item.order ?? 0,
       ingredientIds: item.ingredientIds ?? [],
+      modifierGroups: item.modifierGroups ?? [],
     });
     setImageFile(null);
     setPreviewUrl("");
@@ -192,7 +195,11 @@ export function MenuItemsPage() {
       if (imageFile) {
         imageKey = await uploadMenuItemImage(imageFile);
       }
-      const payload: MenuItemInput = { ...form, imageKey };
+      const payload: MenuItemInput = {
+        ...form,
+        imageKey,
+        modifierGroups: cleanModifierGroups(form.modifierGroups ?? []),
+      };
       if (editingItem) {
         await updateMenuItem(editingItem.id, payload);
       } else {
@@ -371,7 +378,7 @@ export function MenuItemsPage() {
           <DialogHeader>
             <DialogTitle>{editingItem ? t("menuItems.editItem") : t("menuItems.addItem")}</DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 py-2">
+          <div className="grid max-h-[70vh] gap-4 overflow-y-auto py-2 pr-1">
             <div className="grid gap-2">
               <Label>{t("menuItems.image")}</Label>
               <div className="flex items-center gap-3">
@@ -446,6 +453,15 @@ export function MenuItemsPage() {
                   }}
                 />
               )}
+            </div>
+            <div className="grid gap-2">
+              <Label>{t("menuItems.variants")}</Label>
+              <p className="text-xs text-[var(--text-muted)]">{t("menuItems.variantsHint")}</p>
+              <ModifierGroupsEditor
+                groups={form.modifierGroups ?? []}
+                onChange={(modifierGroups) => setForm({ ...form, modifierGroups })}
+                t={t}
+              />
             </div>
             <div className="grid gap-2">
               <Label>{t("menuItems.notes")}</Label>

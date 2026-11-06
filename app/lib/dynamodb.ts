@@ -5,7 +5,7 @@ import { TABLES } from "./tables";
 
 const REGION = "us-east-1";
 
-async function getClient(): Promise<DynamoDBDocumentClient> {
+export async function getClient(): Promise<DynamoDBDocumentClient> {
   const session = await fetchAuthSession();
   const credentials = session.credentials;
 
@@ -168,6 +168,17 @@ export type MenuItem = {
   order: number;
   /** IDs of menu ingredients this item uses (see Menu Ingredients). */
   ingredientIds?: string[];
+  /** Option groups offered when ordering this item (configured on Menu Items). */
+  modifierGroups?: ModifierGroup[];
+};
+
+/** A set of choosable options on a menu item (size, toppings, sides...). */
+export type ModifierGroup = {
+  id: string;
+  name: string;
+  type: "single" | "multi";
+  required?: boolean;
+  options: { id: string; name: string; price: number }[];
 };
 
 export type MenuItemInput = Omit<MenuItem, "id">;
@@ -200,7 +211,7 @@ export async function updateMenuItem(id: string, item: MenuItemInput): Promise<v
     new UpdateCommand({
       TableName: TABLES.menuItems,
       Key: { id },
-      UpdateExpression: "SET #n = :name, description = :description, category = :category, price = :price, available = :available, imageKey = :imageKey, notes = :notes, #o = :order, ingredientIds = :ingredientIds",
+      UpdateExpression: "SET #n = :name, description = :description, category = :category, price = :price, available = :available, imageKey = :imageKey, notes = :notes, #o = :order, ingredientIds = :ingredientIds, modifierGroups = :modifierGroups",
       ExpressionAttributeNames: { "#n": "name", "#o": "order" },
       ExpressionAttributeValues: {
         ":name": item.name,
@@ -212,6 +223,7 @@ export async function updateMenuItem(id: string, item: MenuItemInput): Promise<v
         ":notes": item.notes,
         ":order": item.order,
         ":ingredientIds": item.ingredientIds ?? [],
+        ":modifierGroups": item.modifierGroups ?? [],
       },
     })
   );
@@ -400,14 +412,39 @@ export async function deleteLedgerEntry(id: string): Promise<void> {
 
 // --- Orders (in-person checkout) ---
 
+/** A chosen variant/modifier option on an order line (size, topping, side...). */
+export type OrderModifier = {
+  groupId: string;
+  group: string;
+  id: string;
+  name: string;
+  /** Price delta added to the unit price (can be 0). */
+  price: number;
+};
+
 export type OrderLineItem = {
   menuItemId: string;
   name: string;
+  /** Price of ONE unit including modifiers (what Checkout/Stripe charge). */
   unitPrice: number;
   quantity: number;
+  // --- Order module (all optional so Checkout lines stay valid) ---
+  lineId?: string;
+  /** Menu price before modifiers. */
+  basePrice?: number;
+  modifiers?: OrderModifier[];
+  /** Special instructions for the kitchen ("no onions", "allergy: nuts"). */
+  instructions?: string;
+  /** Seat number at the table this line belongs to. */
+  seat?: number;
 };
 
-export type OrderStatus = "open" | "paid" | "cancelled";
+/** A line removed from an order with a reason; kept for audit, never charged. */
+export type VoidedLine = OrderLineItem & { voidReason: string; voidedAt: string };
+
+export type OrderStatus = "open" | "paid" | "cancelled" | "held";
+
+export type ServiceType = "dine-in" | "takeout";
 
 export type PaymentMethod = "cash" | "card" | "transfer" | "other";
 
@@ -437,6 +474,24 @@ export type Order = {
   // table's label (so the floor plan stays occupied until all are paid) and
   // carries a human label like "Guest 1".
   splitLabel?: string;
+  // --- Order module ---
+  serviceType?: ServiceType;
+  /** Default seat for new items (dine-in). */
+  seat?: number;
+  customerName?: string;
+  /** Discount in pesos already applied to `total`. */
+  discount?: number;
+  discountType?: "percent" | "amount";
+  discountValue?: number;
+  /** Extra fee (packaging, service) in pesos, taxed, included in `total`. */
+  fee?: number;
+  feeLabel?: string;
+  voidedItems?: VoidedLine[];
+  cancelReason?: string;
+  heldAt?: string;
+  mergedInto?: string;
+  mergedFrom?: string[];
+  splitFrom?: string;
 };
 
 export type OrderInput = Omit<Order, "id" | "createdAt">;
