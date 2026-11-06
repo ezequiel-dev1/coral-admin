@@ -15,12 +15,14 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Plus, Pencil, Trash2 } from "lucide-react";
+import { Plus, Pencil, Trash2, ListChecks } from "lucide-react";
+import { IngredientPicker, useIsTouchDevice } from "./IngredientPicker";
 import {
   fetchMenuIngredients,
   createMenuIngredient,
   updateMenuIngredient,
   deleteMenuIngredient,
+  setMenuIngredientAvailability,
   MenuIngredient,
   MenuIngredientInput,
 } from "../lib/dynamodb";
@@ -43,9 +45,41 @@ export function MenuIngredientsPage() {
   const [form, setForm] = useState<MenuIngredientInput>(emptyForm);
   const [saving, setSaving] = useState(false);
 
+  // Bulk availability dialog: checked = in stock
+  const isTouch = useIsTouchDevice();
+  const [showAvailability, setShowAvailability] = useState(false);
+  const [inStockIds, setInStockIds] = useState<string[]>([]);
+  const [savingAvailability, setSavingAvailability] = useState(false);
+
   useEffect(() => {
     loadItems();
   }, []);
+
+  function openAvailability() {
+    setInStockIds(items.filter((i) => i.available).map((i) => i.id));
+    setShowAvailability(true);
+  }
+
+  function toggleInStock(id: string) {
+    setInStockIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
+  }
+
+  async function handleSaveAvailability() {
+    // Only write the ingredients whose availability actually changed.
+    const changed = items.filter((i) => i.available !== inStockIds.includes(i.id));
+    setSavingAvailability(true);
+    try {
+      await Promise.all(
+        changed.map((i) => setMenuIngredientAvailability(i.id, inStockIds.includes(i.id)))
+      );
+      setShowAvailability(false);
+      await loadItems();
+    } catch (err) {
+      console.error("Failed to save ingredient availability:", err);
+    } finally {
+      setSavingAvailability(false);
+    }
+  }
 
   async function loadItems() {
     setLoading(true);
@@ -154,10 +188,16 @@ export function MenuIngredientsPage() {
           </p>
         </div>
         {isAdmin && (
-          <Button onClick={openCreate}>
-            <Plus data-icon="inline-start" />
-            {t("menuIngredients.addItem")}
-          </Button>
+          <div className="flex flex-row items-center gap-2" style={{ flexDirection: "row" }}>
+            <Button variant="outline" onClick={openAvailability}>
+              <ListChecks data-icon="inline-start" />
+              {t("menuIngredients.manageAvailability")}
+            </Button>
+            <Button onClick={openCreate}>
+              <Plus data-icon="inline-start" />
+              {t("menuIngredients.addItem")}
+            </Button>
+          </div>
         )}
       </div>
 
@@ -169,6 +209,34 @@ export function MenuIngredientsPage() {
         defaultPageSize={100}
         defaultSorting={[{ id: "name", desc: false }]}
       />
+
+      {/* Bulk availability dialog */}
+      <Dialog open={showAvailability} onOpenChange={setShowAvailability}>
+        <DialogContent className={isTouch ? "sm:max-w-2xl" : "sm:max-w-lg"}>
+          <DialogHeader>
+            <DialogTitle>{t("menuIngredients.availabilityTitle")}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-[var(--text-muted)]">{t("menuIngredients.availabilityHint")}</p>
+          <IngredientPicker
+            ingredients={items}
+            selectedIds={inStockIds}
+            onToggle={toggleInStock}
+            searchable
+            searchPlaceholder={t("menuIngredients.search")}
+            selectedLabel={t("menuIngredients.inStockCount")}
+            maxHeightClass={isTouch ? "max-h-[60vh]" : "max-h-[50vh]"}
+            dimUnavailable={false}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowAvailability(false)}>
+              {t("menuIngredients.cancel")}
+            </Button>
+            <Button onClick={handleSaveAvailability} disabled={savingAvailability}>
+              {savingAvailability ? t("menuIngredients.saving") : t("menuIngredients.save")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={showModal} onOpenChange={setShowModal}>
         <DialogContent className="sm:max-w-lg">

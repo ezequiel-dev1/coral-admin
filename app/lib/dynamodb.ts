@@ -166,6 +166,8 @@ export type MenuItem = {
   imageKey: string;
   notes: string;
   order: number;
+  /** IDs of menu ingredients this item uses (see Menu Ingredients). */
+  ingredientIds?: string[];
 };
 
 export type MenuItemInput = Omit<MenuItem, "id">;
@@ -198,7 +200,7 @@ export async function updateMenuItem(id: string, item: MenuItemInput): Promise<v
     new UpdateCommand({
       TableName: TABLES.menuItems,
       Key: { id },
-      UpdateExpression: "SET #n = :name, description = :description, category = :category, price = :price, available = :available, imageKey = :imageKey, notes = :notes, #o = :order",
+      UpdateExpression: "SET #n = :name, description = :description, category = :category, price = :price, available = :available, imageKey = :imageKey, notes = :notes, #o = :order, ingredientIds = :ingredientIds",
       ExpressionAttributeNames: { "#n": "name", "#o": "order" },
       ExpressionAttributeValues: {
         ":name": item.name,
@@ -209,7 +211,21 @@ export async function updateMenuItem(id: string, item: MenuItemInput): Promise<v
         ":imageKey": item.imageKey,
         ":notes": item.notes,
         ":order": item.order,
+        ":ingredientIds": item.ingredientIds ?? [],
       },
+    })
+  );
+}
+
+export async function updateMenuItemIngredients(id: string, ingredientIds: string[]): Promise<void> {
+  const docClient = await getClient();
+
+  await docClient.send(
+    new UpdateCommand({
+      TableName: TABLES.menuItems,
+      Key: { id },
+      UpdateExpression: "SET ingredientIds = :ingredientIds",
+      ExpressionAttributeValues: { ":ingredientIds": ingredientIds },
     })
   );
 }
@@ -274,12 +290,44 @@ export async function updateMenuIngredient(id: string, item: MenuIngredientInput
   );
 }
 
+export async function setMenuIngredientAvailability(id: string, available: boolean): Promise<void> {
+  const docClient = await getClient();
+
+  await docClient.send(
+    new UpdateCommand({
+      TableName: TABLES.menuIngredients,
+      Key: { id },
+      UpdateExpression: "SET available = :available",
+      ExpressionAttributeValues: { ":available": available },
+    })
+  );
+}
+
 export async function deleteMenuIngredient(id: string): Promise<void> {
   const docClient = await getClient();
 
   await docClient.send(
     new DeleteCommand({ TableName: TABLES.menuIngredients, Key: { id } })
   );
+}
+
+/** Ingredients used by an item that are currently out of stock (or deleted). */
+export function getUnavailableIngredients(
+  item: Pick<MenuItem, "ingredientIds">,
+  ingredients: MenuIngredient[]
+): MenuIngredient[] {
+  const byId = new Map(ingredients.map((i) => [i.id, i]));
+  return (item.ingredientIds ?? [])
+    .map((id) => byId.get(id))
+    .filter((i): i is MenuIngredient => !!i && !i.available);
+}
+
+/** An item is orderable when it is marked available and all its ingredients are in stock. */
+export function isMenuItemAvailable(
+  item: Pick<MenuItem, "available" | "ingredientIds">,
+  ingredients: MenuIngredient[]
+): boolean {
+  return item.available && getUnavailableIngredients(item, ingredients).length === 0;
 }
 
 // --- Ledger ---

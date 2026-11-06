@@ -16,16 +16,21 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { CurrencyInput } from "@/components/ui/currency-input";
-import { Plus, Pencil, Trash2, ImageOff, Printer, FileText } from "lucide-react";
+import { Plus, Pencil, Trash2, ImageOff, Printer, FileText, Carrot } from "lucide-react";
 import {
   fetchMenuItems,
+  fetchMenuIngredients,
+  getUnavailableIngredients,
+  MenuIngredient,
   createMenuItem,
   updateMenuItem,
+  updateMenuItemIngredients,
   deleteMenuItem,
   MenuItem,
   MenuItemInput,
 } from "../lib/dynamodb";
 import { getObjectUrl, uploadMenuItemImage } from "../lib/receipts";
+import { IngredientPicker, useIsTouchDevice } from "./IngredientPicker";
 import { PrintableMenu } from "./PrintableMenu";
 import { PrintableFlyer } from "./PrintableFlyer";
 
@@ -38,6 +43,7 @@ const emptyForm: MenuItemInput = {
   imageKey: "",
   notes: "",
   order: 0,
+  ingredientIds: [],
 };
 
 function MenuItemImage({
@@ -91,6 +97,7 @@ export function MenuItemsPage() {
   const { t } = useTranslation();
   const isAdmin = useIsAdmin();
   const [items, setItems] = useState<MenuItem[]>([]);
+  const [ingredients, setIngredients] = useState<MenuIngredient[]>([]);
   const [loading, setLoading] = useState(true);
 
   // CRUD state
@@ -102,6 +109,12 @@ export function MenuItemsPage() {
   // Image picker state
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
+
+  // Ingredient assignment dialog state
+  const [ingredientItem, setIngredientItem] = useState<MenuItem | null>(null);
+  const [selectedIngredientIds, setSelectedIngredientIds] = useState<string[]>([]);
+  const isTouch = useIsTouchDevice();
+  const [savingIngredients, setSavingIngredients] = useState(false);
 
   // Full-size image preview state
   const [fullImageUrl, setFullImageUrl] = useState("");
@@ -119,8 +132,12 @@ export function MenuItemsPage() {
   async function loadItems() {
     setLoading(true);
     try {
-      const data = await fetchMenuItems();
+      const [data, ingredientData] = await Promise.all([
+        fetchMenuItems(),
+        fetchMenuIngredients(),
+      ]);
       setItems(data);
+      setIngredients(ingredientData);
     } catch (err) {
       console.error("Failed to fetch menu items:", err);
     } finally {
@@ -147,6 +164,7 @@ export function MenuItemsPage() {
       imageKey: item.imageKey,
       notes: item.notes,
       order: item.order ?? 0,
+      ingredientIds: item.ingredientIds ?? [],
     });
     setImageFile(null);
     setPreviewUrl("");
@@ -189,6 +207,31 @@ export function MenuItemsPage() {
     }
   }
 
+  function openIngredients(item: MenuItem) {
+    setIngredientItem(item);
+    setSelectedIngredientIds(item.ingredientIds ?? []);
+  }
+
+  function toggleIngredient(id: string) {
+    setSelectedIngredientIds((cur) =>
+      cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]
+    );
+  }
+
+  async function handleSaveIngredients() {
+    if (!ingredientItem) return;
+    setSavingIngredients(true);
+    try {
+      await updateMenuItemIngredients(ingredientItem.id, selectedIngredientIds);
+      setIngredientItem(null);
+      await loadItems();
+    } catch (err) {
+      console.error("Failed to save menu item ingredients:", err);
+    } finally {
+      setSavingIngredients(false);
+    }
+  }
+
   async function handleDelete(item: MenuItem) {
     if (!confirm(t("menuItems.confirmDelete"))) return;
     try {
@@ -228,12 +271,32 @@ export function MenuItemsPage() {
         accessorKey: "available",
         header: t("menuItems.available"),
         size: 120,
-        cell: ({ getValue }) =>
-          getValue() ? (
-            <Badge variant="default">{t("menuItems.availableYes")}</Badge>
-          ) : (
-            <Badge variant="outline">{t("menuItems.availableNo")}</Badge>
-          ),
+        cell: ({ row }) => {
+          if (!row.original.available) {
+            return <Badge variant="outline">{t("menuItems.availableNo")}</Badge>;
+          }
+          const missing = getUnavailableIngredients(row.original, ingredients);
+          if (missing.length > 0) {
+            return (
+              <Badge variant="outline" title={missing.map((m) => m.name).join(", ")}>
+                {t("menuItems.missingIngredients")}
+              </Badge>
+            );
+          }
+          return <Badge variant="default">{t("menuItems.availableYes")}</Badge>;
+        },
+      },
+      {
+        id: "ingredients",
+        header: t("menuItems.ingredients"),
+        size: 220,
+        cell: ({ row }) => {
+          const byId = new Map(ingredients.map((i) => [i.id, i]));
+          const names = (row.original.ingredientIds ?? [])
+            .map((id) => byId.get(id)?.name)
+            .filter(Boolean);
+          return <span>{names.join(", ")}</span>;
+        },
       },
       { accessorKey: "notes", header: t("menuItems.notes"), size: 200 },
     ];
@@ -242,9 +305,18 @@ export function MenuItemsPage() {
       cols.push({
         id: "actions",
         header: "",
-        size: 80,
+        size: 120,
         cell: ({ row }) => (
           <div className="flex gap-1">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => openIngredients(row.original)}
+              aria-label={t("menuItems.assignIngredients")}
+              title={t("menuItems.assignIngredients")}
+            >
+              <Carrot />
+            </Button>
             <Button variant="ghost" size="icon-sm" onClick={() => openEdit(row.original)} aria-label="Edit">
               <Pencil />
             </Button>
@@ -257,7 +329,7 @@ export function MenuItemsPage() {
     }
 
     return cols;
-  }, [t, isAdmin]);
+  }, [t, isAdmin, ingredients]);
 
   return (
     <div className="page">
@@ -355,6 +427,27 @@ export function MenuItemsPage() {
               </div>
             </div>
             <div className="grid gap-2">
+              <Label>{t("menuItems.ingredients")}</Label>
+              {ingredients.length === 0 ? (
+                <p className="text-sm text-[var(--text-muted)]">{t("menuItems.noIngredients")}</p>
+              ) : (
+                <IngredientPicker
+                  ingredients={ingredients}
+                  selectedIds={form.ingredientIds ?? []}
+                  maxHeightClass="max-h-48"
+                  onToggle={(id) => {
+                    const current = form.ingredientIds ?? [];
+                    setForm({
+                      ...form,
+                      ingredientIds: current.includes(id)
+                        ? current.filter((x) => x !== id)
+                        : [...current, id],
+                    });
+                  }}
+                />
+              )}
+            </div>
+            <div className="grid gap-2">
               <Label>{t("menuItems.notes")}</Label>
               <textarea
                 className="w-full min-h-[80px] rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 resize-y"
@@ -370,6 +463,37 @@ export function MenuItemsPage() {
                 ? (editingItem ? t("menuItems.saving") : t("menuItems.creating"))
                 : t("menuItems.save")
               }
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Assign ingredients dialog */}
+      <Dialog open={!!ingredientItem} onOpenChange={(open) => !open && setIngredientItem(null)}>
+        <DialogContent className={isTouch ? "sm:max-w-2xl" : "sm:max-w-lg"}>
+          <DialogHeader>
+            <DialogTitle>
+              {t("menuItems.assignIngredients")}
+              {ingredientItem ? `: ${ingredientItem.name}` : ""}
+            </DialogTitle>
+          </DialogHeader>
+          {ingredients.length === 0 ? (
+            <p className="text-sm text-[var(--text-muted)]">{t("menuItems.noIngredients")}</p>
+          ) : (
+            <IngredientPicker
+              ingredients={ingredients}
+              selectedIds={selectedIngredientIds}
+              onToggle={toggleIngredient}
+              searchable
+              searchPlaceholder={t("menuItems.searchIngredients")}
+              selectedLabel={t("menuItems.selected")}
+              maxHeightClass={isTouch ? "max-h-[60vh]" : "max-h-[50vh]"}
+            />
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIngredientItem(null)}>{t("menuItems.cancel")}</Button>
+            <Button onClick={handleSaveIngredients} disabled={savingIngredients}>
+              {savingIngredients ? t("menuItems.saving") : t("menuItems.save")}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -35,6 +35,8 @@ import {
 } from "lucide-react";
 import {
   fetchMenuItems,
+  fetchMenuIngredients,
+  isMenuItemAvailable,
   fetchOrders,
   updateOrderStatus,
   deleteOrder,
@@ -142,12 +144,13 @@ export function CheckoutPage() {
   async function loadData() {
     setLoading(true);
     try {
-      const [items, ords, checks] = await Promise.all([
+      const [items, ingredients, ords, checks] = await Promise.all([
         fetchMenuItems(),
+        fetchMenuIngredients(),
         fetchOrders(),
         fetchOpenChecks(),
       ]);
-      setMenuItems(items.filter((i) => i.available));
+      setMenuItems(items.filter((i) => isMenuItemAvailable(i, ingredients)));
       setOrders(ords);
       setOpenChecks(checks);
     } catch (err) {
