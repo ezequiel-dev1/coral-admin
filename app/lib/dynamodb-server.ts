@@ -4,6 +4,7 @@ import {
   UpdateCommand,
   GetCommand,
   PutCommand,
+  ScanCommand,
 } from "@aws-sdk/lib-dynamodb";
 import type { Order, OrderStatus } from "./dynamodb";
 import { TABLES } from "./tables";
@@ -100,6 +101,31 @@ export async function markOrderPaid(input: MarkOrderPaidInput): Promise<void> {
       },
     })
   );
+}
+
+/** All feedback ratings (rating + timestamp only; comments stay private). */
+export async function fetchFeedbackRatings(): Promise<
+  { rating: number; createdAt: string }[]
+> {
+  const client = getServerClient();
+  const out: { rating: number; createdAt: string }[] = [];
+  let startKey: Record<string, unknown> | undefined;
+  do {
+    const res = await client.send(
+      new ScanCommand({
+        TableName: FEEDBACK_TABLE,
+        ProjectionExpression: "rating, createdAt",
+        ExclusiveStartKey: startKey,
+      })
+    );
+    for (const it of res.Items ?? []) {
+      if (typeof it.rating === "number" && typeof it.createdAt === "string") {
+        out.push({ rating: it.rating, createdAt: it.createdAt });
+      }
+    }
+    startKey = res.LastEvaluatedKey;
+  } while (startKey);
+  return out;
 }
 
 type SaveFeedbackInput = {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { saveFeedback } from "@/app/lib/dynamodb-server";
+import { saveFeedback, fetchFeedbackRatings } from "@/app/lib/dynamodb-server";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +23,17 @@ function isValid(b: unknown): b is FeedbackBody {
   if (body.sessionId != null && typeof body.sessionId !== "string") return false;
   if (body.comment != null && typeof body.comment !== "string") return false;
   return true;
+}
+
+/** Ratings (rating + createdAt only) for the Overview sentiment widget. */
+export async function GET() {
+  try {
+    const ratings = await fetchFeedbackRatings();
+    return NextResponse.json({ ratings });
+  } catch (err) {
+    console.error("[feedback] failed to load:", err);
+    return NextResponse.json({ error: "Could not load feedback" }, { status: 502 });
+  }
 }
 
 /**
