@@ -242,6 +242,19 @@ export async function updateMenuItemIngredients(id: string, ingredientIds: strin
   );
 }
 
+export async function updateMenuItemImage(id: string, imageKey: string): Promise<void> {
+  const docClient = await getClient();
+
+  await docClient.send(
+    new UpdateCommand({
+      TableName: TABLES.menuItems,
+      Key: { id },
+      UpdateExpression: "SET imageKey = :imageKey",
+      ExpressionAttributeValues: { ":imageKey": imageKey },
+    })
+  );
+}
+
 export async function deleteMenuItem(id: string): Promise<void> {
   const docClient = await getClient();
 

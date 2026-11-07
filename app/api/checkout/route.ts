@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
     lineItems.push({
       price_data: {
         currency: CURRENCY,
-        product_data: { name: "IVA (8%)" },
+        product_data: { name: "IVA" },
         unit_amount: toMinorUnits(tax),
       },
       quantity: 1,

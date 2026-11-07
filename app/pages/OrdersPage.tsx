@@ -826,7 +826,6 @@ function OrderEditor({
             {totals.fee > 0 && (
               <div className="flex justify-between"><dt>{t("orders.fee")}</dt><dd>{formatMoney(totals.fee)}</dd></div>
             )}
-            <div className="flex justify-between"><dt>{t("orders.tax")}</dt><dd>{formatMoney(totals.tax)}</dd></div>
             <div className="flex justify-between text-base font-semibold">
               <dt>{t("orders.total")}</dt><dd>{formatMoney(totals.total)}</dd>
             </div>

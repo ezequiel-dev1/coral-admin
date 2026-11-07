@@ -79,8 +79,8 @@ const TRANSFER_DETAILS = {
   clabe: "012028001266858382",
 };
 
-// Tax rate applied to in-person orders (8% IVA — Tijuana border region)
-const TAX_RATE = 0.08;
+// Menu prices already include IVA, so no tax is added on top.
+const TAX_RATE = 0;
 
 /** Parse a menu price string like "$12.00" or "12" into a number. */
 function parsePrice(price: string): number {
@@ -218,6 +218,25 @@ export function CheckoutPage() {
     setSelectedTable(tableId);
     setCurrentCheckId(existing?.id ?? null);
     setCart(existing ? existing.items : []);
+  }
+
+  /** Open takeout orders (they share one label, so they're picked by id). */
+  const takeoutChecks = useMemo(
+    () => openChecks.filter((o) => o.serviceType === "takeout"),
+    [openChecks]
+  );
+
+  /** Select (or deselect) a takeout order to pay out. */
+  function selectTakeout(order: Order) {
+    if (currentCheckId === order.id) {
+      setSelectedTable(null);
+      setCurrentCheckId(null);
+      setCart([]);
+      return;
+    }
+    setSelectedTable(order.tableLabel);
+    setCurrentCheckId(order.id);
+    setCart(order.items);
   }
 
   /** Load a specific sub-check (by id) into the working cart for payout. */
@@ -1011,6 +1030,39 @@ ${
             />
           </div>
 
+          {/* Open takeout orders — not tied to a table */}
+          <div className="flex flex-col gap-2 rounded-xl border border-input bg-[var(--surface)] p-4">
+            <Label className="mb-0">{t("checkout.takeoutOrders")}</Label>
+            {takeoutChecks.length === 0 ? (
+              <span className="text-xs text-[var(--text-muted)]">
+                {t("checkout.noTakeoutOrders")}
+              </span>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {takeoutChecks.map((o) => (
+                  <button
+                    key={o.id}
+                    onClick={() => selectTakeout(o)}
+                    aria-pressed={currentCheckId === o.id}
+                    className={
+                      "flex flex-col items-start rounded-lg border px-3 py-2 text-left text-sm transition-colors " +
+                      (currentCheckId === o.id
+                        ? "border-transparent bg-primary text-primary-foreground"
+                        : "border-input hover:bg-[var(--surface-muted)]")
+                    }
+                  >
+                    <span className="font-medium">
+                      {o.customerName || t("orders.takeout")}
+                    </span>
+                    <span className="text-xs opacity-80">
+                      {formatMoney(o.total)}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="relative">
             <Search
               size={16}
@@ -1079,7 +1131,9 @@ ${
             <ShoppingCart size={18} className="text-primary" />
             <h2 className="text-base font-semibold">
               {selectedTable
-                ? `${t("checkout.table")} ${selectedTable}`
+                ? takeoutChecks.some((o) => o.id === currentCheckId)
+                  ? t("orders.takeout")
+                  : `${t("checkout.table")} ${selectedTable}`
                 : t("checkout.currentOrder")}
             </h2>
             {itemCount > 0 && <Badge variant="secondary">{itemCount}</Badge>}
@@ -1140,10 +1194,6 @@ ${
                 <div className="flex justify-between text-[var(--text-muted)]">
                   <span>{t("checkout.subtotal")}</span>
                   <span>{formatMoney(subtotal)}</span>
-                </div>
-                <div className="flex justify-between text-[var(--text-muted)]">
-                  <span>{t("checkout.tax")} ({Math.round(TAX_RATE * 100)}%)</span>
-                  <span>{formatMoney(tax)}</span>
                 </div>
                 <div className="flex justify-between text-base font-semibold">
                   <span>{t("checkout.total")}</span>
@@ -1223,10 +1273,6 @@ ${
               <div className="flex justify-between text-[var(--text-muted)]">
                 <span>{t("checkout.subtotal")}</span>
                 <span>{formatMoney(subtotal)}</span>
-              </div>
-              <div className="flex justify-between text-[var(--text-muted)]">
-                <span>{t("checkout.tax")} ({Math.round(TAX_RATE * 100)}%)</span>
-                <span>{formatMoney(tax)}</span>
               </div>
               <div className="flex justify-between text-[var(--text-muted)]">
                 <span>{t("checkout.tip")}</span>

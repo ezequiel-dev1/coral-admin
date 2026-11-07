@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "next dev",
     "dev:stripe": "STRIPE_DEV=1 next dev",
+    "dev:lan": "STRIPE_DEV=1 next dev -H 0.0.0.0 --experimental-https",
     "build": "next build",
     "deploy": "./scripts/deploy.sh",
     "deploy:uat": "./scripts/deploy.sh uat",

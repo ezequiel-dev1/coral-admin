@@ -21,6 +21,9 @@ const SOCIALS = [
   { label: "Instagram", url: "https://instagram.com/coralreefandbeef", icon: "📷" },
 ];
 
+// Google Business Profile review link.
+const GOOGLE_REVIEW_URL = "https://g.page/r/CdrhQvPaBG3IEBM/review";
+
 const CORAL = "#E48664";
 const INK = "#1b2a4a";
 
@@ -43,7 +46,7 @@ function StarRating({
             onClick={() => onChange(n)}
             onMouseEnter={() => setHover(n)}
             onMouseLeave={() => setHover(0)}
-            aria-label={`${n} star${n > 1 ? "s" : ""}`}
+            aria-label={`${n} ${n > 1 ? "estrellas" : "estrella"}`}
             style={{
               background: "none",
               border: "none",
@@ -106,6 +109,7 @@ function ReturnContent() {
 
   return (
     <div
+      lang="es"
       style={{
         minHeight: "100vh",
         display: "flex",
@@ -130,10 +134,10 @@ function ReturnContent() {
         {!success ? (
           <>
             <h1 style={{ fontSize: 22, fontWeight: 600, margin: "0 0 0.5rem", color: INK }}>
-              Payment canceled
+              Pago cancelado
             </h1>
             <p style={{ color: "#6b7280", margin: "0 0 1.5rem", fontSize: 14 }}>
-              No charge was made. You can return and try again.
+              No se realizó ningún cargo. Puedes volver e intentarlo de nuevo.
             </p>
             <Link
               href="/"
@@ -148,30 +152,33 @@ function ReturnContent() {
                 fontWeight: 500,
               }}
             >
-              Back to checkout
+              Volver al cobro
             </Link>
           </>
         ) : (
           <>
             <div style={{ fontSize: 40, marginBottom: 4 }}>🙌</div>
             <h1 style={{ fontSize: 23, fontWeight: 700, margin: "0 0 0.35rem", color: INK }}>
-              Thanks for dining with us!
+              ¡Gracias por cenar con nosotros!
             </h1>
             <p style={{ color: "#6b7280", margin: "0 0 1.5rem", fontSize: 14 }}>
-              Your payment went through. We&apos;d love to hear how it went.
+              Tu pago fue exitoso. Nos encantaría saber cómo te fue.
             </p>
 
             {/* Rating */}
             {!submitted ? (
               <div style={{ marginBottom: "1.75rem" }}>
                 <p style={{ fontSize: 13, color: INK, margin: "0 0 0.5rem", fontWeight: 600 }}>
-                  Rate your order
+                  Califica tu pedido
                 </p>
                 <StarRating value={rating} onChange={setRating} />
                 <textarea
+                  // iOS/browser extensions inject attributes (e.g. __gcruniqueid)
+                  // before hydration; ignore that harmless mismatch.
+                  suppressHydrationWarning
                   value={comment}
                   onChange={(e) => setComment(e.target.value)}
-                  placeholder="Leave a comment (optional)"
+                  placeholder="Deja un comentario (opcional)"
                   rows={3}
                   style={{
                     marginTop: "0.9rem",
@@ -203,7 +210,7 @@ function ReturnContent() {
                     cursor: rating < 1 ? "not-allowed" : "pointer",
                   }}
                 >
-                  {submitting ? "Sending..." : "Submit rating"}
+                  {submitting ? "Enviando..." : "Enviar calificación"}
                 </button>
               </div>
             ) : (
@@ -218,14 +225,44 @@ function ReturnContent() {
                   fontWeight: 500,
                 }}
               >
-                Thanks for your feedback! ⭐
+                ¡Gracias por tus comentarios! ⭐
               </div>
             )}
+
+            {/* Google review */}
+            <div style={{ marginBottom: "1.75rem" }}>
+              <p style={{ fontSize: 13, color: "#6b7280", margin: "0 0 0.7rem" }}>
+                ¿Te gustó tu experiencia? Cuéntale al mundo en Google
+              </p>
+              <a
+                href={GOOGLE_REVIEW_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  width: "100%",
+                  boxSizing: "border-box",
+                  border: `1px solid ${CORAL}`,
+                  borderRadius: 10,
+                  padding: "0.7rem",
+                  textDecoration: "none",
+                  color: INK,
+                  fontSize: 14,
+                  fontWeight: 600,
+                }}
+              >
+                <span aria-hidden="true">⭐</span>
+                Déjanos una reseña en Google
+              </a>
+            </div>
 
             {/* Social follow */}
             <div style={{ borderTop: "1px solid #eee", paddingTop: "1.25rem" }}>
               <p style={{ fontSize: 13, color: "#6b7280", margin: "0 0 0.7rem" }}>
-                Follow us for specials &amp; events
+                Síguenos para conocer promociones y eventos
               </p>
               <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
                 {SOCIALS.map((s) => (

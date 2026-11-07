@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "../i18n/LanguageProvider";
 import { useIsAdmin } from "../hooks/useIsAdmin";
 import { CoralDataGrid, ColumnDef } from "@/components/ui/data-grid";
@@ -16,7 +16,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { CurrencyInput } from "@/components/ui/currency-input";
-import { Plus, Pencil, Trash2, ImageOff, Printer, FileText, Carrot } from "lucide-react";
+import { Plus, Pencil, Trash2, ImageOff, ImagePlus, Printer, FileText, Carrot } from "lucide-react";
 import {
   fetchMenuItems,
   fetchMenuIngredients,
@@ -25,6 +25,7 @@ import {
   createMenuItem,
   updateMenuItem,
   updateMenuItemIngredients,
+  updateMenuItemImage,
   deleteMenuItem,
   MenuItem,
   MenuItemInput,
@@ -111,6 +112,14 @@ export function MenuItemsPage() {
   // Image picker state
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
+
+  // Picture-only dialog state
+  const [pictureItem, setPictureItem] = useState<MenuItem | null>(null);
+  const [pictureFile, setPictureFile] = useState<File | null>(null);
+  const [picturePreview, setPicturePreview] = useState("");
+  const [pictureError, setPictureError] = useState("");
+  const [savingPicture, setSavingPicture] = useState(false);
+  const pictureInputRef = useRef<HTMLInputElement>(null);
 
   // Ingredient assignment dialog state
   const [ingredientItem, setIngredientItem] = useState<MenuItem | null>(null);
@@ -214,6 +223,75 @@ export function MenuItemsPage() {
     }
   }
 
+  async function openPicture(item: MenuItem) {
+    setPictureItem(item);
+    setPictureFile(null);
+    setPicturePreview("");
+    setPictureError("");
+    if (item.imageKey) {
+      try {
+        setPicturePreview(await getObjectUrl(item.imageKey));
+      } catch (err) {
+        console.error("Failed to load image:", err);
+      }
+    }
+  }
+
+  function closePicture() {
+    setPictureItem(null);
+    setPictureFile(null);
+    setPicturePreview("");
+    setPictureError("");
+  }
+
+  function selectPictureFile(file: File | undefined | null) {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setPictureError(t("menuItems.invalidImage"));
+      return;
+    }
+    setPictureError("");
+    setPictureFile(file);
+    setPicturePreview((prev) => {
+      if (prev.startsWith("blob:")) URL.revokeObjectURL(prev);
+      return URL.createObjectURL(file);
+    });
+  }
+
+  // Paste an image from the clipboard while the picture dialog is open
+  useEffect(() => {
+    if (!pictureItem) return;
+    function onPaste(e: ClipboardEvent) {
+      const file = Array.from(e.clipboardData?.items ?? [])
+        .find((i) => i.kind === "file" && i.type.startsWith("image/"))
+        ?.getAsFile();
+      if (!file) return;
+      e.preventDefault();
+      const ext = file.type.split("/")[1]?.split("+")[0] || "png";
+      selectPictureFile(new File([file], `pasted-${Date.now()}.${ext}`, { type: file.type }));
+    }
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pictureItem]);
+
+  async function handleSavePicture() {
+    if (!pictureItem || !pictureFile) return;
+    setSavingPicture(true);
+    setPictureError("");
+    try {
+      const key = await uploadMenuItemImage(pictureFile);
+      await updateMenuItemImage(pictureItem.id, key);
+      closePicture();
+      await loadItems();
+    } catch (err) {
+      console.error("Failed to save menu item picture:", err);
+      setPictureError(t("menuItems.saveFailed"));
+    } finally {
+      setSavingPicture(false);
+    }
+  }
+
   function openIngredients(item: MenuItem) {
     setIngredientItem(item);
     setSelectedIngredientIds(item.ingredientIds ?? []);
@@ -312,9 +390,18 @@ export function MenuItemsPage() {
       cols.push({
         id: "actions",
         header: "",
-        size: 120,
+        size: 150,
         cell: ({ row }) => (
           <div className="flex gap-1">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => openPicture(row.original)}
+              aria-label={t("menuItems.changeImage")}
+              title={t("menuItems.changeImage")}
+            >
+              <ImagePlus />
+            </Button>
             <Button
               variant="ghost"
               size="icon-sm"
@@ -479,6 +566,61 @@ export function MenuItemsPage() {
                 ? (editingItem ? t("menuItems.saving") : t("menuItems.creating"))
                 : t("menuItems.save")
               }
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add / change picture dialog */}
+      <Dialog open={!!pictureItem} onOpenChange={(open) => !open && closePicture()}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {t("menuItems.imageDialogTitle")}
+              {pictureItem ? `: ${pictureItem.name}` : ""}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-3 py-2">
+            <div
+              tabIndex={0}
+              className="flex min-h-48 items-center justify-center rounded-lg border-2 border-dashed border-input p-2 text-center text-sm text-[var(--text-muted)] outline-none focus-visible:border-ring"
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                selectPictureFile(e.dataTransfer.files?.[0]);
+              }}
+            >
+              {picturePreview ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={picturePreview} alt="" className="max-h-64 rounded-md object-contain" />
+              ) : (
+                <span className="flex flex-col items-center gap-2">
+                  <ImageOff size={28} />
+                  {t("menuItems.pasteZone")}
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-[var(--text-muted)]">{t("menuItems.pasteHint")}</p>
+            <input
+              ref={pictureInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                selectPictureFile(e.target.files?.[0]);
+                e.target.value = "";
+              }}
+            />
+            <Button variant="outline" onClick={() => pictureInputRef.current?.click()}>
+              <ImagePlus data-icon="inline-start" />
+              {t("menuItems.chooseImage")}
+            </Button>
+            {pictureError && <p role="alert" className="text-sm text-red-600">{pictureError}</p>}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closePicture}>{t("menuItems.cancel")}</Button>
+            <Button onClick={handleSavePicture} disabled={!pictureFile || savingPicture}>
+              {savingPicture ? t("menuItems.saving") : t("menuItems.save")}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -81,12 +81,14 @@ resource "aws_cognito_user_pool_client" "app" {
     "https://${var.domain_name}/",
     "https://${var.uat_domain_name}/",
     "http://localhost:3000/", # for local dev
+    "https://192.168.86.25:3000/", # LAN dev (npm run dev:lan)
   ]
 
   logout_urls = [
     "https://${var.domain_name}/",
     "https://${var.uat_domain_name}/",
     "http://localhost:3000/",
+    "https://192.168.86.25:3000/",
   ]
 
   # Token validity

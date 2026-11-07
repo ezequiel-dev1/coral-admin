@@ -13,8 +13,8 @@ import {
   type VoidedLine,
 } from "./dynamodb";
 
-// Tax rate applied to in-person orders (8% IVA, same as Checkout).
-export const TAX_RATE = 0.08;
+// Menu prices already include IVA, so no tax is added on top (same as Checkout).
+export const TAX_RATE = 0;
 
 export const TAKEOUT_LABEL = "Takeout";
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   useReactTable,
   getCoreRowModel,
@@ -11,6 +11,7 @@ import {
   ColumnDef,
   SortingState,
   ColumnFiltersState,
+  ColumnSizingState,
 } from "@tanstack/react-table";
 import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 
@@ -24,6 +25,8 @@ interface CoralDataGridProps<T> {
   defaultPageSize?: number;
   defaultSorting?: SortingState;
   footerSummary?: FooterSummaryFn<T>;
+  /** localStorage key suffix for saved column widths. Defaults to a key built from the column ids. */
+  storageKey?: string;
 }
 
 export function CoralDataGrid<T extends Record<string, unknown>>({
@@ -34,15 +37,54 @@ export function CoralDataGrid<T extends Record<string, unknown>>({
   defaultPageSize = 50,
   defaultSorting = [],
   footerSummary,
+  storageKey,
 }: CoralDataGridProps<T>) {
   const [sorting, setSorting] = useState<SortingState>(defaultSorting);
   const [globalFilter, setGlobalFilter] = useState("");
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
 
+  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
+  const [sizingLoaded, setSizingLoaded] = useState(false);
+
+  const sizingKey =
+    "coral-grid-widths:" +
+    (storageKey ??
+      columns
+        .map((c) => c.id ?? (c as { accessorKey?: string }).accessorKey ?? "")
+        .join("|"));
+
+  // Load saved widths after mount (avoids SSR hydration mismatch)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(sizingKey);
+      setColumnSizing(raw ? JSON.parse(raw) : {});
+    } catch {
+      setColumnSizing({});
+    }
+    setSizingLoaded(true);
+  }, [sizingKey]);
+
+  // Persist widths on change
+  useEffect(() => {
+    if (!sizingLoaded) return;
+    try {
+      if (Object.keys(columnSizing).length) {
+        localStorage.setItem(sizingKey, JSON.stringify(columnSizing));
+      } else {
+        localStorage.removeItem(sizingKey);
+      }
+    } catch {
+      // storage unavailable or full; ignore
+    }
+  }, [columnSizing, sizingKey, sizingLoaded]);
+
   const table = useReactTable({
     data,
     columns,
-    state: { sorting, globalFilter, columnFilters },
+    state: { sorting, globalFilter, columnFilters, columnSizing },
+    onColumnSizingChange: setColumnSizing,
+    columnResizeMode: "onChange",
+    enableColumnResizing: true,
     onSortingChange: setSorting,
     onGlobalFilterChange: setGlobalFilter,
     onColumnFiltersChange: setColumnFilters,
@@ -75,15 +117,18 @@ export function CoralDataGrid<T extends Record<string, unknown>>({
         {loading ? (
           <p className="p-8 text-center text-sm text-[var(--text-muted)]">Loading...</p>
         ) : (
-          <table className="w-full text-[13px] border-collapse">
+          <table
+            className="text-[13px] border-collapse"
+            style={{ width: table.getTotalSize(), minWidth: "100%", tableLayout: "fixed" }}
+          >
             <thead className="sticky top-0 bg-[#f9f8f7] z-10">
               {table.getHeaderGroups().map((headerGroup) => (
                 <tr key={headerGroup.id}>
                   {headerGroup.headers.map((header) => (
                     <th
                       key={header.id}
-                      className="px-3 py-1 text-left font-semibold text-sm border-b border-r border-[#e7e7e0] whitespace-nowrap select-none"
-                      style={{ width: header.getSize(), minWidth: header.getSize() }}
+                      className="px-3 py-1 text-left font-semibold text-sm border-b border-r border-[#e7e7e0] whitespace-nowrap select-none relative"
+                      style={{ width: header.getSize() }}
                     >
                       {header.isPlaceholder ? null : (
                         <div className="flex flex-col gap-1">
@@ -111,6 +156,19 @@ export function CoralDataGrid<T extends Record<string, unknown>>({
                           )}
                         </div>
                       )}
+                      {header.column.getCanResize() && (
+                        <div
+                          role="separator"
+                          aria-orientation="vertical"
+                          aria-label="Resize column"
+                          onMouseDown={header.getResizeHandler()}
+                          onTouchStart={header.getResizeHandler()}
+                          onDoubleClick={() => header.column.resetSize()}
+                          className={`absolute top-0 right-0 h-full w-1.5 cursor-col-resize select-none touch-none hover:bg-[#3D4F9B]/40 ${
+                            header.column.getIsResizing() ? "bg-[#3D4F9B]" : ""
+                          }`}
+                        />
+                      )}
                     </th>
                   ))}
                 </tr>
@@ -122,8 +180,8 @@ export function CoralDataGrid<T extends Record<string, unknown>>({
                   {row.getVisibleCells().map((cell) => (
                     <td
                       key={cell.id}
-                      className="px-3 py-1.5 border-r border-[#e7e7e0] align-middle"
-                      style={{ width: cell.column.getSize(), minWidth: cell.column.getSize() }}
+                      className="px-3 py-1.5 border-r border-[#e7e7e0] align-middle overflow-hidden text-ellipsis"
+                      style={{ width: cell.column.getSize() }}
                     >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
                     </td>

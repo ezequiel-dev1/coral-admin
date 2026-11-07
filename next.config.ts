@@ -6,6 +6,8 @@ import type { NextConfig } from "next";
 const isStripeDev = process.env.STRIPE_DEV === "1";
 
 const nextConfig: NextConfig = {
+  // Allow other devices on the local network to load the dev server.
+  allowedDevOrigins: ["192.168.*.*", "10.*.*.*", "*.local"],
   ...(isStripeDev
     ? {}
     : {

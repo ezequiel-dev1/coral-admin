@@ -53,3 +53,5 @@ infra/.terraform.lock.hcl
 
 # agent task artifacts
 /.agents/
+
+certificates
