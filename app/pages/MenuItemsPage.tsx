@@ -16,7 +16,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { CurrencyInput } from "@/components/ui/currency-input";
-import { Plus, Pencil, Trash2, ImageOff, ImagePlus, Printer, FileText, Carrot } from "lucide-react";
+import { Plus, Pencil, Trash2, ImageOff, ImagePlus, Printer, FileText, Carrot, ClipboardPaste } from "lucide-react";
 import {
   fetchMenuItems,
   fetchMenuIngredients,
@@ -258,6 +258,30 @@ export function MenuItemsPage() {
     });
   }
 
+  function selectPastedImage(blob: Blob) {
+    const ext = blob.type.split("/")[1]?.split("+")[0] || "png";
+    selectPictureFile(new File([blob], `pasted-${Date.now()}.${ext}`, { type: blob.type }));
+  }
+
+  // Button-based paste (works on mobile where Ctrl/Cmd+V isn't available)
+  async function handlePasteButton() {
+    setPictureError("");
+    try {
+      const clipboardItems = await navigator.clipboard.read();
+      for (const clipItem of clipboardItems) {
+        const type = clipItem.types.find((tp) => tp.startsWith("image/"));
+        if (type) {
+          selectPastedImage(await clipItem.getType(type));
+          return;
+        }
+      }
+      setPictureError(t("menuItems.noClipboardImage"));
+    } catch (err) {
+      console.error("Failed to read clipboard:", err);
+      setPictureError(t("menuItems.pasteFailed"));
+    }
+  }
+
   // Paste an image from the clipboard while the picture dialog is open
   useEffect(() => {
     if (!pictureItem) return;
@@ -267,8 +291,7 @@ export function MenuItemsPage() {
         ?.getAsFile();
       if (!file) return;
       e.preventDefault();
-      const ext = file.type.split("/")[1]?.split("+")[0] || "png";
-      selectPictureFile(new File([file], `pasted-${Date.now()}.${ext}`, { type: file.type }));
+      selectPastedImage(file);
     }
     document.addEventListener("paste", onPaste);
     return () => document.removeEventListener("paste", onPaste);
@@ -614,6 +637,10 @@ export function MenuItemsPage() {
             <Button variant="outline" onClick={() => pictureInputRef.current?.click()}>
               <ImagePlus data-icon="inline-start" />
               {t("menuItems.chooseImage")}
+            </Button>
+            <Button variant="outline" onClick={handlePasteButton}>
+              <ClipboardPaste data-icon="inline-start" />
+              {t("menuItems.pasteImage")}
             </Button>
             {pictureError && <p role="alert" className="text-sm text-red-600">{pictureError}</p>}
           </div>
