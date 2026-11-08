@@ -1,5 +1,8 @@
 "use client";
 
+import { useTranslation } from "../i18n/LanguageProvider";
+import { tableName } from "../lib/tableName";
+
 /**
  * Coral seating chart — reuses the Overview floor-plan widget style (BAR strip
  * on top, WINDOW / DINING ROOM side labels, a fixture strip on the bottom).
@@ -35,12 +38,18 @@ export function SeatingChart({
   onSelect,
   seatsLabel,
 }: SeatingChartProps) {
+  const { t } = useTranslation();
+
+  // Spot ids ("T1", "BAR") are stored data and never change; only the shown label is translated.
+  const labelFor = (id: string) => tableName(t, id);
+
   // All boxes (table, bar, restroom) share this square size.
   const BOX = 96; // table + restroom square size
   const BAR_W = 72; // Bar is a vertical rectangle: narrower...
   const BAR_H = 180; // ...and taller than the square boxes
 
-  const spot = (id: string, label: string, seats: number) => {
+  const spot = (id: string, seats: number) => {
+    const label = labelFor(id);
     const isSelected = selected === id;
     const isOccupied = occupied(id);
     const isT1 = id === "T1";
@@ -65,7 +74,7 @@ export function SeatingChart({
         }}
         aria-pressed={isSelected}
         aria-label={`${label}, ${seats} ${seatsLabel}${
-          isOccupied ? " (open check)" : ""
+          isOccupied ? ` (${t("seating.openCheck")})` : ""
         }`}
       >
         <b>{label}</b>
@@ -91,16 +100,16 @@ export function SeatingChart({
     >
       {/* Top reference strip */}
       <div className="bar" style={{ gridArea: "entrance" }}>
-        ENTRANCE <span>● ● ● ● ●</span>
+        {t("seating.entrance")} <span>● ● ● ● ●</span>
       </div>
 
       {/* Side labels (reference) */}
-      <div className="floor-label label-a">WINDOW</div>
-      <div className="floor-label label-b">DINING ROOM</div>
+      <div className="floor-label label-a">{t("seating.window")}</div>
+      <div className="floor-label label-b">{t("seating.diningRoom")}</div>
 
       {/* Selectable spots */}
-      {spot("T1", "T1", 4)}
-      {spot("BAR", "Bar", 3)}
+      {spot("T1", 4)}
+      {spot("BAR", 3)}
 
       {/* Bottom row: MAIN BAR fills all remaining width, Restroom is a fixed
           square flush to its right (no gap between them). */}
@@ -114,13 +123,13 @@ export function SeatingChart({
         }}
       >
         <div className="pass" style={{ flex: 1, height: "100%" }}>
-          MAIN BAR
+          {t("seating.mainBar")}
         </div>
         <div
           className="pass"
           style={{ width: BOX, height: BOX, flex: "0 0 auto" }}
         >
-          RESTROOM
+          {t("seating.restroom")}
         </div>
       </div>
     </div>

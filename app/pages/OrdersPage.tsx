@@ -17,6 +17,7 @@ import {
 import {
   ArrowLeft,
   Ban,
+  CheckCircle2,
   Loader2,
   Minus,
   Pause,
@@ -24,8 +25,8 @@ import {
   Play,
   Plus,
   RotateCcw,
-  Save,
   Search,
+  Send,
   Split,
   Merge,
   XCircle,
@@ -56,6 +57,7 @@ import {
   newLineId,
   normalizeLines,
   parsePrice,
+  markOrdersReady,
   reopenOrder,
   round2,
   saveOrder,
@@ -65,6 +67,8 @@ import {
   withTotals,
 } from "../lib/orders";
 import { SEATING_SPOTS, SeatingChart } from "./SeatingChart";
+import { MenuItemThumb } from "./MenuItemThumb";
+import { tableName } from "../lib/tableName";
 
 type T = (key: string, vars?: Record<string, string>) => string;
 
@@ -82,16 +86,26 @@ const selectClass =
 const textareaClass =
   "w-full rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 
-function statusVariant(status: Order["status"]): "default" | "secondary" | "outline" | "destructive" {
+/** What the badge/tabs show: an open order the kitchen finished is "ready". */
+type DisplayStatus = Order["status"] | "ready";
+
+function displayStatus(o: Order): DisplayStatus {
+  return o.status === "open" && o.readyAt ? "ready" : o.status;
+}
+
+function statusVariant(status: DisplayStatus): "default" | "secondary" | "outline" | "destructive" {
   if (status === "open") return "default";
+  if (status === "ready") return "outline";
   if (status === "held") return "secondary";
   if (status === "cancelled") return "destructive";
   return "outline";
 }
 
-function statusLabel(t: T, status: Order["status"]): string {
+function statusLabel(t: T, status: DisplayStatus): string {
   return t(`orders.status.${status}`);
 }
+
+const READY_BADGE_CLASS = "border-emerald-600 bg-emerald-50 text-emerald-800";
 
 function seatCountFor(tableLabel: string): number {
   return SEATING_SPOTS.find((s) => s.id === tableLabel)?.seats ?? 0;
@@ -101,7 +115,7 @@ function seatCountFor(tableLabel: string): number {
 // Page: order list + editor switch
 // ===========================================================================
 
-type Filter = "active" | "held" | "paid" | "cancelled" | "all";
+type Filter = "active" | "ready" | "held" | "paid" | "cancelled" | "all";
 
 export function OrdersPage() {
   const { t } = useTranslation();
@@ -146,15 +160,19 @@ export function OrdersPage() {
   const visible = useMemo(() => {
     return orders.filter((o) => {
       if (filter === "all") return true;
-      if (filter === "active") return o.status === "open";
+      if (filter === "active") return o.status === "open" && !o.readyAt;
+      if (filter === "ready") return o.status === "open" && !!o.readyAt;
       return o.status === filter;
     });
   }, [orders, filter]);
 
   const counts = useMemo(() => {
-    const c = { active: 0, held: 0, paid: 0, cancelled: 0, all: orders.length };
+    const c = { active: 0, ready: 0, held: 0, paid: 0, cancelled: 0, all: orders.length };
     for (const o of orders) {
-      if (o.status === "open") c.active++;
+      if (o.status === "open") {
+        if (o.readyAt) c.ready++;
+        else c.active++;
+      }
       else if (o.status === "held") c.held++;
       else if (o.status === "paid") c.paid++;
       else if (o.status === "cancelled") c.cancelled++;
@@ -189,6 +207,24 @@ export function OrdersPage() {
   const selectedOrders = orders
     .filter((o) => selected.has(o.id))
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+
+  // Selected orders that are still cooking (open and not yet marked ready).
+  const readyCandidates = selectedOrders.filter((o) => o.status === "open" && !o.readyAt);
+
+  async function handleMarkReady() {
+    if (readyCandidates.length === 0) return;
+    setBusy(true);
+    try {
+      await markOrdersReady(readyCandidates.map((o) => o.id));
+      setSelected(new Set());
+      await load();
+    } catch (err) {
+      console.error("Mark ready failed:", err);
+      setError(t("orders.actionError"));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function handleMerge() {
     if (selectedOrders.length < 2) return;
@@ -226,7 +262,7 @@ export function OrdersPage() {
     );
   }
 
-  const filters: Filter[] = ["active", "held", "paid", "cancelled", "all"];
+  const filters: Filter[] = ["active", "ready", "held", "paid", "cancelled", "all"];
 
   return (
     <>
@@ -237,6 +273,12 @@ export function OrdersPage() {
           <p className="subhead">{t("orders.subtitle")}</p>
         </div>
         <div className="flex gap-2">
+          {readyCandidates.length >= 1 && (
+            <Button variant="outline" onClick={handleMarkReady} disabled={busy}>
+              {busy ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle2 size={16} />}{" "}
+              {t("orders.markReady")} ({readyCandidates.length})
+            </Button>
+          )}
           {selectedOrders.length >= 2 && (
             <Button variant="outline" onClick={() => setShowMerge(true)}>
               <Merge size={16} /> {t("orders.merge")} ({selectedOrders.length})
@@ -307,7 +349,7 @@ export function OrdersPage() {
                     <p className="text-sm font-semibold">
                       {o.serviceType === "takeout"
                         ? `${t("orders.takeout")}${o.customerName ? ` · ${o.customerName}` : ""}`
-                        : `${t("orders.table")} ${o.tableLabel || "—"}`}
+                        : o.tableLabel ? tableName(t, o.tableLabel) : `${t("orders.table")} —`}
                       {o.splitLabel ? ` · ${o.splitLabel}` : ""}
                     </p>
                     <p className="text-xs text-[var(--text-muted)]">
@@ -315,7 +357,12 @@ export function OrdersPage() {
                       {new Date(o.createdAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
                     </p>
                   </div>
-                  <Badge variant={statusVariant(o.status)}>{statusLabel(t, o.status)}</Badge>
+                  <Badge
+                    variant={statusVariant(displayStatus(o))}
+                    className={displayStatus(o) === "ready" ? READY_BADGE_CLASS : undefined}
+                  >
+                    {statusLabel(t, displayStatus(o))}
+                  </Badge>
                   <b className="w-28 text-right">{formatMoney(o.total)}</b>
                 </button>
               </div>
@@ -335,7 +382,7 @@ export function OrdersPage() {
               target: selectedOrders[0]
                 ? selectedOrders[0].serviceType === "takeout"
                   ? t("orders.takeout")
-                  : `${t("orders.table")} ${selectedOrders[0].tableLabel}`
+                  : tableName(t, selectedOrders[0].tableLabel)
                 : "",
             })}
           </p>
@@ -388,6 +435,7 @@ function OrderEditor({
   const [reasonDialog, setReasonDialog] = useState<ReasonDialog>(null);
   const [reason, setReason] = useState("");
   const [showSplit, setShowSplit] = useState(false);
+  const [showKitchenConfirm, setShowKitchenConfirm] = useState(false);
 
   const readOnly = draft.status === "paid" || draft.status === "cancelled";
   const serviceType: ServiceType = draft.serviceType ?? "dine-in";
@@ -467,13 +515,13 @@ function OrderEditor({
     return null;
   }
 
-  async function persist(): Promise<Order | null> {
+  async function persist(patch?: Partial<Order>): Promise<Order | null> {
     const problem = validate();
     if (problem) {
       setMessage({ kind: "error", text: problem });
       return null;
     }
-    const toSave = withTotals(draft);
+    const toSave = withTotals({ ...draft, ...patch });
     await saveOrder(toSave);
     setDraft(toSave);
     setPersisted(true);
@@ -495,7 +543,41 @@ function OrderEditor({
     }
   }
 
-  const handleSave = () => run(async () => void (await persist()), t("orders.saved"));
+  // "Send To Kitchen": validate first, then have the waiter confirm the items by seat.
+  function handleSendToKitchen() {
+    const problem = validate();
+    if (problem) {
+      setMessage({ kind: "error", text: problem });
+      return;
+    }
+    setShowKitchenConfirm(true);
+  }
+
+  function confirmSendToKitchen() {
+    setShowKitchenConfirm(false);
+    return run(async () => {
+      // Sending to the kitchen again means there is food to cook: no longer "ready".
+      const saved = await persist({ readyAt: undefined });
+      if (saved) onClose(); // back to the orders list
+    });
+  }
+
+  // Items grouped by seat (numbered seats first, unassigned last) for the confirmation dialog.
+  const seatGroups = useMemo(() => {
+    // Takeout has no seats: one flat group.
+    if (serviceType === "takeout") return [[undefined, draft.items]] as [number | undefined, OrderLineItem[]][];
+    const groups = new Map<number | undefined, OrderLineItem[]>();
+    for (const line of draft.items) {
+      const list = groups.get(line.seat) ?? [];
+      list.push(line);
+      groups.set(line.seat, list);
+    }
+    return Array.from(groups.entries()).sort(([a], [b]) => {
+      if (a === undefined) return 1;
+      if (b === undefined) return -1;
+      return a - b;
+    });
+  }, [draft.items, serviceType]);
 
   const handleHold = () =>
     run(async () => {
@@ -541,9 +623,9 @@ function OrderEditor({
     }
     run(async () => {
       await cancelOrder(draft.id, text);
-      setDraft({ ...draft, status: "cancelled", cancelReason: text });
       onChanged();
-    }, t("orders.cancelled"));
+      onClose(); // back to the orders list
+    });
   }
 
   function handleSplitRequest() {
@@ -581,14 +663,21 @@ function OrderEditor({
             {serviceType === "takeout"
               ? t("orders.takeout")
               : draft.tableLabel
-                ? `${t("orders.table")} ${draft.tableLabel}`
+                ? tableName(t, draft.tableLabel)
                 : t("orders.newOrder")}
             {draft.splitLabel ? ` · ${draft.splitLabel}` : ""}
           </h1>
-          <p className="subhead">
-            <Badge variant={statusVariant(draft.status)}>{statusLabel(t, draft.status)}</Badge>
-            {draft.status === "cancelled" && draft.cancelReason ? ` ${draft.cancelReason}` : ""}
-          </p>
+          {(draft.status !== "open" || draft.readyAt) && (
+            <p className="subhead mb-4">
+              <Badge
+                variant={statusVariant(displayStatus(draft))}
+                className={displayStatus(draft) === "ready" ? READY_BADGE_CLASS : undefined}
+              >
+                {statusLabel(t, displayStatus(draft))}
+              </Badge>
+              {draft.status === "cancelled" && draft.cancelReason ? ` ${draft.cancelReason}` : ""}
+            </p>
+          )}
         </div>
       </section>
 
@@ -618,7 +707,7 @@ function OrderEditor({
                 <div className="flex items-center justify-between">
                   <Label className="mb-0">{t("orders.table")}</Label>
                   <span className="text-xs text-[var(--text-muted)]">
-                    {draft.tableLabel ? `${t("orders.table")} ${draft.tableLabel}` : t("orders.pickTable")}
+                    {draft.tableLabel ? tableName(t, draft.tableLabel) : t("orders.pickTable")}
                   </span>
                 </div>
                 <div className={readOnly ? "pointer-events-none opacity-60" : ""}>
@@ -698,6 +787,7 @@ function OrderEditor({
                       onClick={() => setItemDialog({ item })}
                       className="flex flex-col items-start gap-1 rounded-xl border border-input bg-[var(--surface)] p-3 text-left transition-all hover:border-primary hover:shadow-sm focus-visible:ring-3 focus-visible:ring-ring/50"
                     >
+                      <MenuItemThumb imageKey={item.imageKey} />
                       <span className="line-clamp-2 text-sm font-medium">{item.name}</span>
                       {item.category && (
                         <span className="text-xs text-[var(--text-muted)]">{item.category}</span>
@@ -856,8 +946,8 @@ function OrderEditor({
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-2">
-              <Button onClick={handleSave} disabled={busy} className="col-span-2">
-                {busy ? <Loader2 className="animate-spin" size={14} /> : <Save size={14} />} {t("orders.save")}
+              <Button onClick={handleSendToKitchen} disabled={busy} className="col-span-2">
+                {busy ? <Loader2 className="animate-spin" size={14} /> : <Send size={14} />} {t("orders.sendToKitchen")}
               </Button>
               {draft.status === "held" ? (
                 <Button variant="outline" onClick={handleResume} disabled={busy}>
@@ -908,6 +998,59 @@ function OrderEditor({
           }}
         />
       )}
+
+      {/* confirm order before it reaches the kitchen */}
+      <Dialog open={showKitchenConfirm} onOpenChange={setShowKitchenConfirm}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{t("orders.kitchenConfirmTitle")}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-[var(--text-muted)]">
+            {serviceType === "takeout"
+              ? t("orders.takeout")
+              : tableName(t, draft.tableLabel)}
+            {" · "}
+            {serviceType === "takeout" ? t("orders.kitchenConfirmBodyTakeout") : t("orders.kitchenConfirmBody")}
+          </p>
+          <div className="grid max-h-[55vh] gap-3 overflow-y-auto py-1">
+            {seatGroups.map(([seat, lines]) => (
+              <section key={seat ?? "none"} className="rounded-lg border border-input p-3">
+                {serviceType !== "takeout" && (
+                  <h3 className="mb-2 text-sm font-semibold">
+                    {seat === undefined ? t("orders.noSeatGroup") : `${t("orders.seat")} ${seat}`}
+                  </h3>
+                )}
+                <ul className="grid gap-2">
+                  {lines.map((line) => (
+                    <li key={line.lineId} className="flex items-start gap-2 text-sm">
+                      <b className="w-8 shrink-0">{line.quantity}×</b>
+                      <div className="min-w-0">
+                        <p className="font-medium">{line.name}</p>
+                        {(line.modifiers ?? []).length > 0 && (
+                          <p className="text-xs text-[var(--text-muted)]">
+                            {(line.modifiers ?? []).map((m) => m.name).join(", ")}
+                          </p>
+                        )}
+                        {line.instructions && (
+                          <p className="text-xs italic text-[var(--text-muted)]">“{line.instructions}”</p>
+                        )}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowKitchenConfirm(false)}>
+              {t("orders.kitchenBack")}
+            </Button>
+            <Button onClick={confirmSendToKitchen} disabled={busy}>
+              <Send size={14} /> {t("orders.kitchenConfirm")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* void / cancel reason */}
       <Dialog open={reasonDialog !== null} onOpenChange={(o) => !o && setReasonDialog(null)}>

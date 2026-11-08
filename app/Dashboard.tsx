@@ -10,12 +10,14 @@ import { MenuIngredientsPage } from "./pages/MenuIngredientsPage";
 import { CheckoutPage } from "./pages/CheckoutPage";
 import { OrdersPage } from "./pages/OrdersPage";
 import { ReservationsPage } from "./pages/ReservationsPage";
+import { PrinterTestPage } from "./pages/PrinterTestPage";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import {
   LayoutDashboard,
   UtensilsCrossed,
   Carrot,
+  Printer,
   ShoppingCart,
   ClipboardList,
   CalendarDays,
@@ -39,7 +41,7 @@ export function Dashboard() {
   const { user, logout } = useAuth();
   const { lang, setLang, t } = useTranslation();
 
-  const validTabs = ["Overview", "Orders", "Reservations", "Checkout", "Menu Items", "Menu Ingredients"];
+  const validTabs = ["Overview", "Orders", "Reservations", "Checkout", "Menu Items", "Menu Ingredients", "Printer Test"];
 
   function getTabFromHash(): string {
     if (typeof window === "undefined") return "Overview";
@@ -91,6 +93,7 @@ export function Dashboard() {
     { key: "Checkout", label: t("nav.checkout"), icon: ShoppingCart, public: false },
     { key: "Menu Items", label: t("nav.menuItems"), icon: UtensilsCrossed, public: false },
     { key: "Menu Ingredients", label: t("nav.menuIngredients"), icon: Carrot, public: false },
+    { key: "Printer Test", label: t("nav.printerTest"), icon: Printer, public: false },
   ];
 
   const navItems = allNavItems.filter((item) => item.public || isPrivileged);
@@ -181,6 +184,7 @@ export function Dashboard() {
           {isPrivileged && tab === "Checkout" && <CheckoutPage />}
           {isPrivileged && tab === "Menu Items" && <MenuItemsPage />}
           {isPrivileged && tab === "Menu Ingredients" && <MenuIngredientsPage />}
+          {isPrivileged && tab === "Printer Test" && <PrinterTestPage />}
         </div>
       </section>
     </main>

@@ -15,6 +15,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { SeatingChart } from "./SeatingChart";
+import { tableName } from "../lib/tableName";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import {
   fetchReservations,
@@ -186,7 +187,12 @@ export function ReservationsPage() {
       { accessorKey: "guestName", header: t("reservations.guestName"), size: 200 },
       { accessorKey: "partySize", header: t("reservations.partySize"), size: 100 },
       { accessorKey: "phone", header: t("reservations.phone"), size: 150 },
-      { accessorKey: "tableLabel", header: t("reservations.table"), size: 110 },
+      {
+        accessorKey: "tableLabel",
+        header: t("reservations.table"),
+        size: 110,
+        cell: ({ getValue }) => tableName(t, (getValue() as string) || ""),
+      },
       {
         accessorKey: "status",
         header: t("reservations.status"),
@@ -325,7 +331,7 @@ export function ReservationsPage() {
               <div className="flex items-center justify-between">
                 <Label className="mb-0">{t("reservations.table")}</Label>
                 <span className="text-xs text-[var(--text-muted)]">
-                  {form.tableLabel ? `${t("reservations.table")} ${form.tableLabel}` : t("reservations.pickTable")}
+                  {form.tableLabel ? tableName(t, form.tableLabel) : t("reservations.pickTable")}
                 </span>
               </div>
               <SeatingChart

@@ -5,7 +5,6 @@ import { useTranslation } from "../i18n/LanguageProvider";
 import { useAuth } from "../auth/AuthProvider";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CurrencyInput } from "@/components/ui/currency-input";
 import {
@@ -21,7 +20,6 @@ import {
   Trash2,
   ShoppingCart,
   Receipt,
-  Search,
   CheckCircle2,
   XCircle,
   Clock,
@@ -39,9 +37,6 @@ import {
   X,
 } from "lucide-react";
 import {
-  fetchMenuItems,
-  fetchMenuIngredients,
-  isMenuItemAvailable,
   fetchOrders,
   updateOrderStatus,
   deleteOrder,
@@ -57,7 +52,6 @@ import {
   closeCheckPaid,
   splitCheckByItem,
   unsplitCheck,
-  MenuItem,
   Order,
   OrderLineItem,
   OrderStatus,
@@ -66,6 +60,8 @@ import {
 import { uploadCorteEvidence, getObjectUrl } from "../lib/receipts";
 import { PaymentQR } from "./PaymentQR";
 import { SeatingChart } from "./SeatingChart";
+import { tableName } from "../lib/tableName";
+import { printAgent, canUsePrintAgent, toPrinterText, PRINT_COLUMNS } from "../lib/printAgent";
 import { useIsTouchDevice } from "./IngredientPicker";
 import { SplitCheckDialog, type SplitBucketResult } from "./SplitCheckDialog";
 
@@ -82,12 +78,6 @@ const TRANSFER_DETAILS = {
 // Menu prices already include IVA, so no tax is added on top.
 const TAX_RATE = 0;
 
-/** Parse a menu price string like "$12.00" or "12" into a number. */
-function parsePrice(price: string): number {
-  const num = parseFloat((price || "").replace(/[^0-9.]/g, ""));
-  return isNaN(num) ? 0 : num;
-}
-
 function formatMoney(value: number): string {
   return value.toLocaleString("es-MX", {
     style: "currency",
@@ -103,7 +93,6 @@ export function CheckoutPage() {
   const { t, lang } = useTranslation();
   const { user } = useAuth();
 
-  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -115,8 +104,6 @@ export function CheckoutPage() {
   // All open checks, keyed for floor-plan occupancy + resuming a table's cart.
   const [openChecks, setOpenChecks] = useState<Order[]>([]);
   const [checkSaving, setCheckSaving] = useState(false);
-  const [search, setSearch] = useState("");
-  const [activeCategory, setActiveCategory] = useState<string>("all");
 
   // Checkout dialog
   const [showCheckout, setShowCheckout] = useState(false);
@@ -136,6 +123,9 @@ export function CheckoutPage() {
 
   // Transfer bank details: brief "copied" feedback on the CLABE.
   const [clabeCopied, setClabeCopied] = useState(false);
+  // Printing the bank details on the thermal printer (via the Print Agent).
+  const [printingBank, setPrintingBank] = useState(false);
+  const [bankPrintMsg, setBankPrintMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   // Custom-percentage tip: whether the % field is shown, and its value.
   const [customPctMode, setCustomPctMode] = useState(false);
@@ -172,13 +162,7 @@ export function CheckoutPage() {
   async function loadData() {
     setLoading(true);
     try {
-      const [items, ingredients, ords, checks] = await Promise.all([
-        fetchMenuItems(),
-        fetchMenuIngredients(),
-        fetchOrders(),
-        fetchOpenChecks(),
-      ]);
-      setMenuItems(items.filter((i) => isMenuItemAvailable(i, ingredients)));
+      const [ords, checks] = await Promise.all([fetchOrders(), fetchOpenChecks()]);
       setOrders(ords);
       setOpenChecks(checks);
     } catch (err) {
@@ -303,46 +287,6 @@ export function CheckoutPage() {
       clearInterval(interval);
     };
   }, [cardPhase, pendingOrderId]);
-
-  const categories = useMemo(() => {
-    const set = new Set<string>();
-    menuItems.forEach((i) => i.category && set.add(i.category));
-    return ["all", ...Array.from(set).sort()];
-  }, [menuItems]);
-
-  const visibleItems = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return menuItems.filter((i) => {
-      const matchesCategory = activeCategory === "all" || i.category === activeCategory;
-      const matchesSearch =
-        !term ||
-        i.name.toLowerCase().includes(term) ||
-        i.description.toLowerCase().includes(term);
-      return matchesCategory && matchesSearch;
-    });
-  }, [menuItems, activeCategory, search]);
-
-  function addToCart(item: MenuItem) {
-    // Items must belong to a table's check — require a table first.
-    if (!selectedTable) return;
-    setCart((prev) => {
-      const existing = prev.find((l) => l.menuItemId === item.id);
-      if (existing) {
-        return prev.map((l) =>
-          l.menuItemId === item.id ? { ...l, quantity: l.quantity + 1 } : l
-        );
-      }
-      return [
-        ...prev,
-        {
-          menuItemId: item.id,
-          name: item.name,
-          unitPrice: parsePrice(item.price),
-          quantity: 1,
-        },
-      ];
-    });
-  }
 
   function changeQuantity(menuItemId: string, delta: number) {
     setCart((prev) =>
@@ -567,6 +511,42 @@ export function CheckoutPage() {
     } catch (err) {
       console.error("Failed to copy CLABE:", err);
     }
+  }
+
+  /** Print the bank details (and amount due) on the thermal printer via the Print Agent. */
+  async function printBankInfo() {
+    if (printingBank) return;
+    setPrintingBank(true);
+    setBankPrintMsg(null);
+    // 32 columns at size 1 (16 at size 2): the 18-digit CLABE must stay at size 1.
+    const result = await printAgent.print({
+      lines: [
+        { text: "CORAL", align: "center", bold: true, size: 2 },
+        { text: "REEF & BEEF", align: "center", bold: true, size: 2 },
+        "",
+        { text: toPrinterText(t("checkout.transferTitle")), align: "center", bold: true },
+        "-".repeat(PRINT_COLUMNS),
+        toPrinterText(`${t("checkout.transferBank")}: ${TRANSFER_DETAILS.bank}`),
+        toPrinterText(`${t("checkout.transferAccount")}: ${TRANSFER_DETAILS.account}`),
+        `${toPrinterText(t("checkout.transferClabe"))}:`,
+        { text: TRANSFER_DETAILS.clabe, align: "center", bold: true },
+        "-".repeat(PRINT_COLUMNS),
+        { text: toPrinterText(`${t("checkout.total")}: ${formatMoney(total)}`), align: "right", bold: true },
+      ],
+      feed: 3,
+      cut: true,
+    });
+    const text = result.ok
+      ? t("checkout.printBankInfoSent")
+      : result.error === "timeout"
+        ? t("printer.errTimeout")
+        : result.error === "unsupported"
+          ? t("printer.errUnsupported")
+          : result.error === "other"
+            ? result.message || t("printer.errNetwork")
+            : t("printer.errNetwork");
+    setBankPrintMsg({ ok: result.ok, text });
+    setPrintingBank(false);
   }
 
   async function handleSubmitOrder() {
@@ -998,7 +978,7 @@ ${
                 <Label className="mb-0">{t("checkout.seatingChart")}</Label>
                 <span className="text-xs text-[var(--text-muted)]">
                   {selectedTable
-                    ? `${t("checkout.tableSelected")} ${selectedTable}`
+                    ? `${t("checkout.tableSelected")} ${tableName(t, selectedTable)}`
                     : t("checkout.selectTablePrompt")}
                 </span>
               </div>
@@ -1063,65 +1043,14 @@ ${
             )}
           </div>
 
-          <div className="relative">
-            <Search
-              size={16}
-              className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]"
-            />
-            <Input
-              className="pl-9"
-              placeholder={t("checkout.searchItems")}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            {categories.map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setActiveCategory(cat)}
-                className={
-                  "rounded-full border px-3 py-1 text-sm transition-colors " +
-                  (activeCategory === cat
-                    ? "border-transparent bg-primary text-primary-foreground"
-                    : "border-input text-[var(--text-muted)] hover:bg-[var(--surface-muted)]")
-                }
-              >
-                {cat === "all" ? t("checkout.allCategories") : cat}
-              </button>
-            ))}
-          </div>
-
-          {!selectedTable && !loading && (
-            <p className="rounded-lg border border-dashed border-input bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--text-muted)]">
-              {t("checkout.selectTablePrompt")}
-            </p>
-          )}
-
           {loading ? (
             <p className="text-sm text-[var(--text-muted)]">{t("checkout.loading")}</p>
-          ) : visibleItems.length === 0 ? (
-            <p className="text-sm text-[var(--text-muted)]">{t("checkout.noItems")}</p>
           ) : (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
-              {visibleItems.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => addToCart(item)}
-                  disabled={!selectedTable}
-                  className="flex flex-col items-start gap-1 rounded-xl border border-input bg-[var(--surface)] p-3 text-left transition-all hover:border-primary hover:shadow-sm focus-visible:ring-3 focus-visible:ring-ring/50 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-input disabled:hover:shadow-none"
-                >
-                  <span className="line-clamp-2 text-sm font-medium">{item.name}</span>
-                  {item.category && (
-                    <span className="text-xs text-[var(--text-muted)]">{item.category}</span>
-                  )}
-                  <span className="mt-auto pt-1 text-sm font-semibold text-primary">
-                    {formatMoney(parsePrice(item.price))}
-                  </span>
-                </button>
-              ))}
-            </div>
+            !selectedTable && (
+              <p className="rounded-lg border border-dashed border-input bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--text-muted)]">
+                {t("checkout.selectTablePrompt")}
+              </p>
+            )
           )}
         </div>
 
@@ -1133,7 +1062,7 @@ ${
               {selectedTable
                 ? takeoutChecks.some((o) => o.id === currentCheckId)
                   ? t("orders.takeout")
-                  : `${t("checkout.table")} ${selectedTable}`
+                  : tableName(t, selectedTable)
                 : t("checkout.currentOrder")}
             </h2>
             {itemCount > 0 && <Badge variant="secondary">{itemCount}</Badge>}
@@ -1434,6 +1363,25 @@ ${
                     </span>
                   </div>
                 </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={printBankInfo}
+                  disabled={printingBank || !canUsePrintAgent()}
+                  title={canUsePrintAgent() ? undefined : t("checkout.printTabletOnly")}
+                >
+                  <Printer data-icon="inline-start" />
+                  {printingBank ? t("checkout.printingBankInfo") : t("checkout.printBankInfo")}
+                </Button>
+                {bankPrintMsg && (
+                  <p
+                    role="status"
+                    className={`text-xs ${bankPrintMsg.ok ? "text-emerald-700" : "text-destructive"}`}
+                  >
+                    {bankPrintMsg.text}
+                  </p>
+                )}
               </div>
             )}
 
@@ -1945,7 +1893,7 @@ ${
                       <div className="flex items-center gap-2">
                         {statusBadge(order.status)}
                         <span className="text-sm font-medium">
-                          {t("checkout.table")} {order.tableLabel}
+                          {tableName(t, order.tableLabel)}
                         </span>
                       </div>
                       <span className="flex items-center gap-1 text-xs text-[var(--text-muted)]">

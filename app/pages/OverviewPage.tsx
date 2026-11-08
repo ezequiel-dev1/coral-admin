@@ -5,6 +5,7 @@ import { useAuth } from "../auth/AuthProvider";
 import { useTranslation } from "../i18n/LanguageProvider";
 import { fetchOrders, type Order } from "../lib/dynamodb";
 import { SEATING_SPOTS, SeatingChart } from "./SeatingChart";
+import { tableName } from "../lib/tableName";
 
 type Rating = { rating: number; createdAt: string };
 
@@ -289,7 +290,7 @@ export function OverviewPage() {
             <p className="subhead">{t("overview.noOrdersInProgress")}</p>
           )}
           {stats.inProgress.map((o) => {
-            const label = o.serviceType === "takeout" ? t("overview.takeout") : o.tableLabel || "—";
+            const label = o.serviceType === "takeout" ? t("overview.takeout") : tableName(t, o.tableLabel) || "—";
             const qty = (o.items ?? []).reduce((n, l) => n + l.quantity, 0);
             return (
               <button className="order" key={o.id} onClick={() => { window.location.hash = "orders"; }}>

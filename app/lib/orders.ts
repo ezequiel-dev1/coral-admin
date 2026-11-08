@@ -178,6 +178,26 @@ export async function setHeld(id: string, held: boolean): Promise<void> {
   );
 }
 
+/** Mark open orders as ready (finished cooking). Orders that are no longer open are skipped. */
+export async function markOrdersReady(ids: string[]): Promise<void> {
+  const docClient = await getClient();
+  const now = new Date().toISOString();
+  await Promise.all(
+    ids.map((id) =>
+      docClient.send(
+        new UpdateCommand({
+          TableName: TABLES.orders,
+          Key: { id },
+          ConditionExpression: "#s = :open",
+          UpdateExpression: "SET readyAt = :now",
+          ExpressionAttributeNames: { "#s": "status" },
+          ExpressionAttributeValues: { ":open": "open", ":now": now },
+        })
+      )
+    )
+  );
+}
+
 export async function cancelOrder(id: string, reason: string): Promise<void> {
   const docClient = await getClient();
   await docClient.send(
