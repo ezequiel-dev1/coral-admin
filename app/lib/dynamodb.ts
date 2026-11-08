@@ -502,6 +502,8 @@ export type Order = {
   voidedItems?: VoidedLine[];
   cancelReason?: string;
   heldAt?: string;
+  /** S3 key of the bank-transfer proof (screenshot sent by the customer), for transfer payments. */
+  transferEvidenceKey?: string;
   /** Set when the kitchen finished cooking an open order ("Ready" tab). Status stays "open" so checkout/payment flows are unaffected. */
   readyAt?: string;
   mergedInto?: string;
@@ -761,6 +763,8 @@ export async function closeCheckPaid(
     tip: number;
     total: number;
     paymentMethod: PaymentMethod;
+    /** S3 key of the transfer proof image, when one was attached. */
+    transferEvidenceKey?: string;
   }
 ): Promise<void> {
   const docClient = await getClient();
@@ -771,7 +775,8 @@ export async function closeCheckPaid(
       ConditionExpression: "attribute_exists(id) AND #s = :open",
       UpdateExpression:
         "SET #s = :paid, tip = :tip, #tot = :total, paymentMethod = :pm, " +
-        "netAmount = :total, paidAt = :paidAt",
+        "netAmount = :total, paidAt = :paidAt" +
+        (finalize.transferEvidenceKey ? ", transferEvidenceKey = :evidence" : ""),
       ExpressionAttributeNames: { "#s": "status", "#tot": "total" },
       ExpressionAttributeValues: {
         ":open": "open" as OrderStatus,
@@ -780,6 +785,7 @@ export async function closeCheckPaid(
         ":total": finalize.total,
         ":pm": finalize.paymentMethod,
         ":paidAt": new Date().toISOString(),
+        ...(finalize.transferEvidenceKey ? { ":evidence": finalize.transferEvidenceKey } : {}),
       },
     })
   );

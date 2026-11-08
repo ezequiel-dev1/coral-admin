@@ -33,6 +33,7 @@ import {
   Banknote,
   Printer,
   Paperclip,
+  ClipboardPaste,
   Camera,
   X,
 } from "lucide-react";
@@ -57,7 +58,7 @@ import {
   OrderStatus,
   PaymentMethod,
 } from "../lib/dynamodb";
-import { uploadCorteEvidence, getObjectUrl } from "../lib/receipts";
+import { uploadCorteEvidence, uploadTransferEvidence, getObjectUrl } from "../lib/receipts";
 import { PaymentQR } from "./PaymentQR";
 import { SeatingChart } from "./SeatingChart";
 import { tableName } from "../lib/tableName";
@@ -126,6 +127,9 @@ export function CheckoutPage() {
   // Printing the bank details on the thermal printer (via the Print Agent).
   const [printingBank, setPrintingBank] = useState(false);
   const [bankPrintMsg, setBankPrintMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  // Proof of the bank transfer (screenshot pasted from the clipboard), uploaded when the check is paid.
+  const [transferProof, setTransferProof] = useState<{ file: File; url: string } | null>(null);
+  const [proofMsg, setProofMsg] = useState<{ ok: boolean; text: string } | null>(null);
 
   // Custom-percentage tip: whether the % field is shown, and its value.
   const [customPctMode, setCustomPctMode] = useState(false);
@@ -513,6 +517,61 @@ export function CheckoutPage() {
     }
   }
 
+  function setProofFile(file: File | null) {
+    setTransferProof((prev) => {
+      if (prev) URL.revokeObjectURL(prev.url);
+      return file ? { file, url: URL.createObjectURL(file) } : null;
+    });
+  }
+
+  function proofFromBlob(blob: Blob): File {
+    const ext = blob.type.split("/")[1]?.split("+")[0] || "png";
+    return new File([blob], `transfer-${Date.now()}.${ext}`, { type: blob.type });
+  }
+
+  /** "Paste" button: read an image copied on the tablet (e.g. from WhatsApp) from the clipboard. */
+  async function pasteTransferProof() {
+    setProofMsg(null);
+    try {
+      if (!navigator.clipboard?.read) throw new Error("unsupported");
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const type = item.types.find((ty) => ty.startsWith("image/"));
+        if (type) {
+          setProofFile(proofFromBlob(await item.getType(type)));
+          return;
+        }
+      }
+      setProofMsg({ ok: false, text: t("checkout.pasteProofEmpty") });
+    } catch (err) {
+      console.error("Failed to read the clipboard:", err);
+      setProofMsg({ ok: false, text: t("checkout.pasteProofDenied") });
+    }
+  }
+
+  // Also accept a regular paste (long-press > Paste, or Ctrl+V) while the transfer section is showing.
+  useEffect(() => {
+    if (!showCheckout || paymentMethod !== "transfer") return;
+    function onPaste(e: ClipboardEvent) {
+      const file = Array.from(e.clipboardData?.items ?? [])
+        .find((i) => i.kind === "file" && i.type.startsWith("image/"))
+        ?.getAsFile();
+      if (!file) return;
+      e.preventDefault();
+      setProofMsg(null);
+      setProofFile(proofFromBlob(file));
+    }
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  }, [showCheckout, paymentMethod]);
+
+  // Release the preview URL when leaving the page.
+  useEffect(() => {
+    return () => {
+      if (transferProof) URL.revokeObjectURL(transferProof.url);
+    };
+  }, [transferProof]);
+
   /** Print the bank details (and amount due) on the thermal printer via the Print Agent. */
   async function printBankInfo() {
     if (printingBank) return;
@@ -628,7 +687,20 @@ export function CheckoutPage() {
         total: Math.round((subtotal + tax) * 100) / 100,
         notes: orderNotes.trim(),
       });
-      await closeCheckPaid(checkId, { tip, total, paymentMethod });
+      // Attach the transfer proof first; if the upload fails, stay here so it can be retried.
+      let transferEvidenceKey: string | undefined;
+      if (paymentMethod === "transfer" && transferProof) {
+        try {
+          transferEvidenceKey = await uploadTransferEvidence(transferProof.file);
+        } catch (err) {
+          console.error("Failed to upload transfer proof:", err);
+          setProofMsg({ ok: false, text: t("checkout.proofUploadFailed") });
+          return;
+        }
+      }
+      await closeCheckPaid(checkId, { tip, total, paymentMethod, transferEvidenceKey });
+      setProofFile(null);
+      setProofMsg(null);
       setShowCheckout(false);
       clearCart();
       await loadData();
@@ -642,6 +714,8 @@ export function CheckoutPage() {
   /** Close the checkout dialog and reset the card/QR flow. */
   function closeCheckout() {
     setShowCheckout(false);
+    setProofFile(null);
+    setProofMsg(null);
     setCardPhase("idle");
     setCardPayUrl(null);
     setPendingOrderId(null);
@@ -1382,6 +1456,44 @@ ${
                     {bankPrintMsg.text}
                   </p>
                 )}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={pasteTransferProof}
+                  disabled={submitting}
+                >
+                  <ClipboardPaste data-icon="inline-start" />
+                  {transferProof ? t("checkout.replaceProof") : t("checkout.pasteProof")}
+                </Button>
+                {transferProof && (
+                  <div className="flex items-start gap-2 rounded-lg border border-input bg-[var(--surface)] p-2">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={transferProof.url}
+                      alt={t("checkout.proofAlt")}
+                      className="max-h-40 flex-1 rounded-md object-contain"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      onClick={() => {
+                        setProofFile(null);
+                        setProofMsg(null);
+                      }}
+                      aria-label={t("checkout.removeProof")}
+                    >
+                      <X />
+                    </Button>
+                  </div>
+                )}
+                {proofMsg && (
+                  <p role="status" className={`text-xs ${proofMsg.ok ? "text-emerald-700" : "text-destructive"}`}>
+                    {proofMsg.text}
+                  </p>
+                )}
+                <p className="text-xs text-[var(--text-muted)]">{t("checkout.pasteProofHint")}</p>
               </div>
             )}
 

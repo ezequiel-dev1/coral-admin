@@ -65,6 +65,36 @@ export async function uploadMenuItemImage(file: File): Promise<string> {
 }
 
 /**
+ * Uploads the proof of a bank transfer (screenshot the customer sent by
+ * WhatsApp) under the `transfer-evidence/` key prefix. Returns the object key.
+ */
+export async function uploadTransferEvidence(file: File): Promise<string> {
+  const client = await getS3Client();
+  const ext = file.name.includes(".") ? file.name.split(".").pop() : "";
+  const rand = Math.random().toString(36).slice(2, 8);
+  const key = `transfer-evidence/${Date.now()}-${rand}${ext ? `.${ext}` : ""}`;
+
+  const command = new PutObjectCommand({
+    Bucket: BUCKET,
+    Key: key,
+    ContentType: file.type || "application/octet-stream",
+  });
+  const url = await getSignedUrl(client, command, { expiresIn: 300 });
+
+  const response = await fetch(url, {
+    method: "PUT",
+    body: file,
+    headers: { "Content-Type": file.type || "application/octet-stream" },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to upload transfer evidence: ${response.status}`);
+  }
+
+  return key;
+}
+
+/**
  * Uploads a cash-reconciliation evidence file (purchase receipt photo, PDF...)
  * under the `cash-evidence/` key prefix. Returns the stored object key.
  */
