@@ -3,8 +3,8 @@
 
 export const AGENT_URL = "http://127.0.0.1:8765";
 
-/** Receipt paper is 32 columns wide at size 1 (about 32/N characters at size N). */
-export const PRINT_COLUMNS = 32;
+/** Paper is 48 columns wide at size 1 (48/N characters at size N). */
+export const PRINT_COLUMNS = 48;
 
 export type AgentErrorKind = "network" | "timeout" | "unsupported" | "other";
 
@@ -25,11 +25,15 @@ export interface PrintLine {
   size?: 1 | 2 | 3 | 4; // character magnification, default 1
 }
 
+/** "kitchen" = kitchen order tickets; "register" = cashier/receipts (only one wired to the cash drawer). */
+export type PrinterName = "kitchen" | "register";
+
 export interface PrintJob {
+  printer: PrinterName; // always sent explicitly
   lines: (string | PrintLine)[]; // 1..500 entries
   feed?: number; // blank lines before the cut, 0..10, default 3
   cut?: boolean; // default true
-  openDrawer?: boolean; // pulse the cash drawer, default false
+  openDrawer?: boolean; // pulse the cash drawer, default false; only valid with printer "register"
 }
 
 // Characters the printer's IBM437 code page can show beyond plain ASCII.
@@ -98,9 +102,13 @@ async function call(
 
 export const printAgent = {
   status: () => call("GET", "/status"),
-  testPrint: () => call("POST", "/print/test"),
+  testPrint: (printer: PrinterName) => call("POST", "/print/test", { printer }),
+  /** Pulse the cash drawer (the agent always uses the register printer). */
   openDrawer: () => call("POST", "/drawer/open"),
-  /** Print a custom job (receipt, kitchen ticket, bank details...). */
+  /**
+   * Print a custom job. Kitchen tickets go to "kitchen"; customer receipts go to "register"
+   * (set openDrawer for cash payments). Never retried automatically: a 502 may still have printed.
+   */
   print: (job: PrintJob) => call("POST", "/print", job),
 };
 

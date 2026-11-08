@@ -577,8 +577,9 @@ export function CheckoutPage() {
     if (printingBank) return;
     setPrintingBank(true);
     setBankPrintMsg(null);
-    // 32 columns at size 1 (16 at size 2): the 18-digit CLABE must stay at size 1.
+    // 48 columns at size 1 (24 at size 2). Customer-facing, so it goes to the register printer.
     const result = await printAgent.print({
+      printer: "register",
       lines: [
         { text: "CORAL", align: "center", bold: true, size: 2 },
         { text: "REEF & BEEF", align: "center", bold: true, size: 2 },
@@ -587,12 +588,12 @@ export function CheckoutPage() {
         "-".repeat(PRINT_COLUMNS),
         toPrinterText(`${t("checkout.transferBank")}: ${TRANSFER_DETAILS.bank}`),
         toPrinterText(`${t("checkout.transferAccount")}: ${TRANSFER_DETAILS.account}`),
-        `${toPrinterText(t("checkout.transferClabe"))}:`,
-        { text: TRANSFER_DETAILS.clabe, align: "center", bold: true },
+        toPrinterText(`${t("checkout.transferClabe")}: ${TRANSFER_DETAILS.clabe}`),
         "-".repeat(PRINT_COLUMNS),
         { text: toPrinterText(`${t("checkout.total")}: ${formatMoney(total)}`), align: "right", bold: true },
       ],
-      feed: 3,
+      // Extra blank lines so the total clears the cutter before the paper is cut.
+      feed: 7,
       cut: true,
     });
     const text = result.ok
