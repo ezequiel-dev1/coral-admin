@@ -69,6 +69,8 @@ import {
 import { SEATING_SPOTS, SeatingChart } from "./SeatingChart";
 import { MenuItemThumb } from "./MenuItemThumb";
 import { tableName } from "../lib/tableName";
+import { printAgent, canUsePrintAgent } from "../lib/printAgent";
+import { buildKitchenTicket } from "../lib/kitchenTicket";
 
 type T = (key: string, vars?: Record<string, string>) => string;
 
@@ -522,12 +524,12 @@ function OrderEditor({
       return null;
     }
     const toSave = withTotals({ ...draft, ...patch });
-    await saveOrder(toSave);
-    setDraft(toSave);
+    const stored = await saveOrder(toSave); // carries the sale code assigned on first save
+    setDraft(stored);
     setPersisted(true);
     setDirty(false);
     onChanged();
-    return toSave;
+    return stored;
   }
 
   async function run(action: () => Promise<void>, okText?: string) {
@@ -558,7 +560,27 @@ function OrderEditor({
     return run(async () => {
       // Sending to the kitchen again means there is food to cook: no longer "ready".
       const saved = await persist({ readyAt: undefined });
-      if (saved) onClose(); // back to the orders list
+      if (!saved) return;
+      // The print agent only exists on the tablet; elsewhere just save.
+      if (canUsePrintAgent()) {
+        const categoryById = new Map(menuItems.map((i) => [i.id, i.category]));
+        const job = buildKitchenTicket(
+          saved,
+          (id) => categoryById.get(id) ?? "",
+          t,
+          tableName(t, saved.tableLabel),
+        );
+        const result = await printAgent.print(job);
+        if (!result.ok) {
+          // Stay on the order so the waiter sees the problem and can resend.
+          setMessage({
+            kind: "error",
+            text: result.message ? `${t("kitchenTicket.printFailed")} (${result.message})` : t("kitchenTicket.printFailed"),
+          });
+          return;
+        }
+      }
+      onClose(); // back to the orders list
     });
   }
 

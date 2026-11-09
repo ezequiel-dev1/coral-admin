@@ -3,6 +3,7 @@ import { TABLES } from "./tables";
 import {
   getClient,
   getOrder,
+  nextSaleCode,
   type MenuItem,
   type ModifierGroup,
   type Order,
@@ -115,7 +116,9 @@ function clean<T>(value: T): T {
 }
 
 /** Create or fully replace an order that is still open/held (or new). */
-export async function saveOrder(order: Order): Promise<void> {
+export async function saveOrder(input: Order): Promise<Order> {
+  // First save of an order assigns its sale code; later saves keep it.
+  const order = input.saleCode ? input : { ...input, saleCode: await nextSaleCode() };
   const docClient = await getClient();
   await docClient.send(
     new PutCommand({
@@ -129,6 +132,7 @@ export async function saveOrder(order: Order): Promise<void> {
       },
     })
   );
+  return order;
 }
 
 export function blankOrder(

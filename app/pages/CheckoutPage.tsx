@@ -36,6 +36,7 @@ import {
   ClipboardPaste,
   Camera,
   X,
+  DollarSign,
 } from "lucide-react";
 import {
   fetchOrders,
@@ -51,6 +52,10 @@ import {
   saveOpenCheck,
   setOpenCheckTip,
   closeCheckPaid,
+  getExchangeRate,
+  setExchangeRate,
+  type Currency,
+  type ExchangeRate,
   splitCheckByItem,
   unsplitCheck,
   Order,
@@ -63,6 +68,7 @@ import { PaymentQR } from "./PaymentQR";
 import { SeatingChart } from "./SeatingChart";
 import { tableName } from "../lib/tableName";
 import { printAgent, canUsePrintAgent, toPrinterText, PRINT_COLUMNS } from "../lib/printAgent";
+import { buildSaleTickets } from "../lib/saleTicket";
 import { useIsTouchDevice } from "./IngredientPicker";
 import { SplitCheckDialog, type SplitBucketResult } from "./SplitCheckDialog";
 
@@ -119,6 +125,20 @@ export function CheckoutPage() {
   const [pendingSessionId, setPendingSessionId] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
 
+  // Currency the customer pays in (cash only for USD) and cash handed over, in that currency.
+  const [currency, setCurrency] = useState<Currency>("MXN");
+  const [amountReceived, setAmountReceived] = useState("");
+
+  // Shared MXN-per-USD rate + its update dialog.
+  const [rate, setRate] = useState<ExchangeRate | null>(null);
+  const [showRate, setShowRate] = useState(false);
+  const [rateInput, setRateInput] = useState("");
+  const [rateSaving, setRateSaving] = useState(false);
+  const [rateError, setRateError] = useState("");
+
+  // Result of the last automatic receipt print.
+  const [receiptMsg, setReceiptMsg] = useState<{ ok: boolean; text: string; orderId?: string } | null>(null);
+
   // Tip: "" = no tip; otherwise a peso amount as a string
   const [tipInput, setTipInput] = useState("");
 
@@ -162,6 +182,94 @@ export function CheckoutPage() {
   useEffect(() => {
     loadData();
   }, []);
+
+  useEffect(() => {
+    getExchangeRate()
+      .then(setRate)
+      .catch((err) => console.error("Failed to load exchange rate:", err));
+  }, []);
+
+  async function openRateDialog() {
+    setRateError("");
+    setRateInput(rate ? String(rate.rate) : "");
+    setShowRate(true);
+    // Another tablet may have changed it since this page loaded.
+    try {
+      const fresh = await getExchangeRate();
+      if (fresh) {
+        setRate(fresh);
+        setRateInput(String(fresh.rate));
+      }
+    } catch (err) {
+      console.error("Failed to refresh exchange rate:", err);
+    }
+  }
+
+  async function saveRate() {
+    const value = parseFloat(rateInput.replace(/[^0-9.]/g, ""));
+    if (isNaN(value) || value <= 0) {
+      setRateError(t("checkout.exchangeRateInvalid"));
+      return;
+    }
+    setRateSaving(true);
+    try {
+      setRate(await setExchangeRate(Math.round(value * 10000) / 10000, user?.name || user?.email || ""));
+      setShowRate(false);
+    } catch (err) {
+      console.error("Failed to save exchange rate:", err);
+      setRateError(t("checkout.exchangeRateSaveFailed"));
+    } finally {
+      setRateSaving(false);
+    }
+  }
+
+  /**
+   * Print the customer copy and the restaurant's record copy for a paid order.
+   * With `openDrawer` (cash sales) the drawer pulses with the first copy; if that
+   * print fails, the drawer is still opened on its own so the cashier can give change.
+   */
+  async function printSaleReceipt(orderId: string, openDrawer = false) {
+    if (!canUsePrintAgent()) return;
+    let drawerPending = openDrawer;
+    try {
+      const order = await getOrder(orderId);
+      if (!order) throw new Error("Order not found");
+      const jobs = buildSaleTickets(
+        order,
+        t,
+        { cashier: user?.name || user?.email || "", exchangeRate: rate?.rate },
+        openDrawer
+      );
+      // One at a time so the copies come out in order; stop at the first failure.
+      for (const job of jobs) {
+        const result = await printAgent.print(job);
+        if (result.ok && job.openDrawer) drawerPending = false;
+        if (!result.ok) {
+          const reason =
+            result.error === "network"
+              ? t("printer.errNetwork")
+              : result.error === "timeout"
+                ? t("printer.errTimeout")
+                : result.error === "unsupported"
+                  ? t("printer.errUnsupported")
+                  : result.message || `HTTP ${result.status}`;
+          throw new Error(reason);
+        }
+      }
+      setReceiptMsg({ ok: true, text: t("saleTicket.printSent") });
+    } catch (err) {
+      console.error("Failed to print sale receipt:", err);
+      const reason = err instanceof Error ? err.message : String(err);
+      let text = `${t("saleTicket.printFailed")} ${reason}`;
+      if (drawerPending) {
+        // A failed print (or a 502 that may not have reached the printer) must not keep the drawer shut.
+        const drawer = await printAgent.openDrawer();
+        if (!drawer.ok) text += ` ${t("saleTicket.drawerFailed")}`;
+      }
+      // Keep the order id so the banner can offer a retry (reprints only, never reopens the drawer).
+      setReceiptMsg({ ok: false, text, orderId });
+    }
+  }
 
   async function loadData() {
     setLoading(true);
@@ -270,6 +378,7 @@ export function CheckoutPage() {
         if (cancelled || !order) return;
         if (order.status === "paid") {
           setCardPhase("paid");
+          printSaleReceipt(order.id);
           fetchOrders()
             .then((ords) => {
               if (!cancelled) setOrders(ords);
@@ -312,6 +421,8 @@ export function CheckoutPage() {
     setCurrentCheckId(null);
     setOrderNotes("");
     setPaymentMethod("cash");
+    setCurrency("MXN");
+    setAmountReceived("");
     setTipInput("");
     setCustomPctMode(false);
     setCustomPctInput("");
@@ -331,6 +442,23 @@ export function CheckoutPage() {
     [subtotal, tax, tip]
   );
   const itemCount = useMemo(() => cart.reduce((n, l) => n + l.quantity, 0), [cart]);
+
+  // Amounts stay in MXN; for USD the customer is shown the total converted at the current rate.
+  const payingUsd = paymentMethod === "cash" && currency === "USD";
+  const totalInCurrency = useMemo(
+    () => (payingUsd && rate ? Math.round((total / rate.rate) * 100) / 100 : total),
+    [payingUsd, rate, total]
+  );
+  const received = useMemo(() => {
+    const num = parseFloat((amountReceived || "").replace(/[^0-9.]/g, ""));
+    return isNaN(num) ? 0 : Math.round(num * 100) / 100;
+  }, [amountReceived]);
+  const changeDue =
+    paymentMethod === "cash" && received > 0 ? Math.max(Math.round((received - totalInCurrency) * 100) / 100, 0) : 0;
+  const receivedShort = paymentMethod === "cash" && received > 0 && received < totalInCurrency;
+  const usdNeedsRate = payingUsd && !rate;
+  const formatCurrencyAmount = (v: number) =>
+    v.toLocaleString("en-US", { style: "currency", currency, minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   // Auto-save the selected table's cart to its open check (debounced), so an
   // in-progress check survives refresh/close and syncs across devices. Skips
@@ -611,6 +739,7 @@ export function CheckoutPage() {
 
   async function handleSubmitOrder() {
     if (cart.length === 0 || !selectedTable) return;
+    if (usdNeedsRate || receivedShort) return;
 
     if (paymentMethod === "card") {
       // Card payments are completed by the customer on their own phone: we
@@ -699,12 +828,26 @@ export function CheckoutPage() {
           return;
         }
       }
-      await closeCheckPaid(checkId, { tip, total, paymentMethod, transferEvidenceKey });
+      const isCash = paymentMethod === "cash";
+      await closeCheckPaid(checkId, {
+        tip,
+        total,
+        paymentMethod,
+        transferEvidenceKey,
+        cashier: user?.name || user?.email || "",
+        currency: payingUsd ? "USD" : "MXN",
+        exchangeRate: rate?.rate,
+        // Cash only: what the customer handed over (defaults to the exact total) and the change.
+        amountTendered: isCash ? (received > 0 ? received : totalInCurrency) : undefined,
+        change: isCash ? changeDue : undefined,
+      });
       setProofFile(null);
       setProofMsg(null);
       setShowCheckout(false);
       clearCart();
       await loadData();
+      // Customer copy + restaurant copy. Failure doesn't undo the payment.
+      await printSaleReceipt(checkId, isCash);
     } catch (err) {
       console.error("Failed to record order:", err);
     } finally {
@@ -1026,12 +1169,18 @@ ${
 
   return (
     <div className="page">
-      <div className="page-header flex items-center justify-between">
-        <div>
+      <div className="page-header flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
           <h1>{t("checkout.title")}</h1>
           <p className="page-subtitle">{t("checkout.subtitle")}</p>
         </div>
-        <div style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+        {/* Wraps onto extra rows on narrow screens (tablet portrait) instead of overflowing. */}
+        <div style={{ flexDirection: "row", flexWrap: "wrap", justifyContent: "flex-end", alignItems: "center", gap: 8 }}>
+          <Button variant="outline" onClick={openRateDialog}>
+            <DollarSign data-icon="inline-start" />
+            {t("checkout.exchangeRateButton")}:{" "}
+            {rate ? rate.rate.toFixed(2) : t("checkout.exchangeRateNotSet")}
+          </Button>
           <Button variant="outline" onClick={openReconcile}>
             <Banknote data-icon="inline-start" />
             {t("checkout.cashReconciliation")}
@@ -1043,13 +1192,44 @@ ${
         </div>
       </div>
 
+      {receiptMsg && (
+        <p
+          role="status"
+          className={`mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm ${
+            receiptMsg.ok
+              ? "border-emerald-600 bg-emerald-50 text-emerald-800"
+              : "border-destructive text-destructive"
+          }`}
+        >
+          <span className="min-w-0 flex-1 break-words">{receiptMsg.text}</span>
+          {!receiptMsg.ok && receiptMsg.orderId && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const id = receiptMsg.orderId!;
+                setReceiptMsg(null);
+                printSaleReceipt(id);
+              }}
+            >
+              <Printer data-icon="inline-start" />
+              {t("saleTicket.retry")}
+            </Button>
+          )}
+          <Button type="button" variant="ghost" size="icon-sm" onClick={() => setReceiptMsg(null)} aria-label={t("checkout.cancel")}>
+            <X />
+          </Button>
+        </p>
+      )}
+
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_360px] lg:items-start">
         {/* Left column: seating chart + menu picker */}
-        <div className="flex flex-col gap-3">
+        <div className="flex min-w-0 flex-col gap-3">
           {/* Seating chart — same width as the menu items */}
           <div className="flex flex-col gap-2 rounded-xl border border-input bg-[var(--surface)] p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex flex-col gap-0.5">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="flex min-w-0 flex-col gap-0.5">
                 <Label className="mb-0">{t("checkout.seatingChart")}</Label>
                 <span className="text-xs text-[var(--text-muted)]">
                   {selectedTable
@@ -1130,7 +1310,7 @@ ${
         </div>
 
         {/* Cart */}
-        <div className="flex h-fit flex-col gap-3 rounded-xl border border-input bg-[var(--surface)] p-4 lg:sticky lg:top-4">
+        <div className="flex h-fit min-w-0 flex-col gap-3 rounded-xl border border-input bg-[var(--surface)] p-4 lg:sticky lg:top-4">
           <div className="flex items-center gap-2">
             <ShoppingCart size={18} className="text-primary" />
             <h2 className="text-base font-semibold">
@@ -1229,7 +1409,7 @@ ${
           else setShowCheckout(true);
         }}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-h-[90dvh] overflow-y-auto overscroll-contain sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
               {cardPhase === "idle"
@@ -1383,7 +1563,15 @@ ${
               <select
                 className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
                 value={paymentMethod}
-                onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
+                onChange={(e) => {
+                  const method = e.target.value as PaymentMethod;
+                  setPaymentMethod(method);
+                  // USD is cash-only (card is charged in MXN through Stripe).
+                  if (method !== "cash") {
+                    setCurrency("MXN");
+                    setAmountReceived("");
+                  }
+                }}
               >
                 <option value="cash">{t("checkout.payCash")}</option>
                 <option value="card">{t("checkout.payCard")}</option>
@@ -1391,6 +1579,72 @@ ${
                 <option value="other">{t("checkout.payOther")}</option>
               </select>
             </div>
+
+            {paymentMethod === "cash" && (
+              <div className="grid gap-3 rounded-lg border border-input bg-[var(--surface-muted)] p-3">
+                <div className="grid gap-1.5">
+                  <Label>{t("checkout.currency")}</Label>
+                  <select
+                    className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                    value={currency}
+                    onChange={(e) => {
+                      setCurrency(e.target.value as Currency);
+                      setAmountReceived("");
+                    }}
+                  >
+                    <option value="MXN">{t("checkout.currencyMXN")}</option>
+                    <option value="USD">{t("checkout.currencyUSD")}</option>
+                  </select>
+                </div>
+                {payingUsd && (
+                  <div className="flex items-center justify-between gap-2 text-sm">
+                    <span className="text-[var(--text-muted)]">
+                      {t("checkout.exchangeRateLabel")}: {rate ? rate.rate.toFixed(2) : t("checkout.exchangeRateNotSet")}
+                    </span>
+                    <Button type="button" variant="outline" size="sm" onClick={openRateDialog}>
+                      <DollarSign data-icon="inline-start" />
+                      {t("checkout.exchangeRateButton")}
+                    </Button>
+                  </div>
+                )}
+                {usdNeedsRate && (
+                  <p role="status" className="text-xs text-destructive">
+                    {t("checkout.exchangeRateNeeded")}
+                  </p>
+                )}
+                {!usdNeedsRate && (
+                  <>
+                    {payingUsd && (
+                      <div className="flex justify-between text-sm font-semibold">
+                        <span>{t("checkout.totalInCurrency", { currency })}</span>
+                        <span>{formatCurrencyAmount(totalInCurrency)}</span>
+                      </div>
+                    )}
+                    <div className="grid gap-1.5">
+                      <Label>{t("checkout.amountReceived")}</Label>
+                      <CurrencyInput
+                        value={amountReceived}
+                        onChange={setAmountReceived}
+                        step={payingUsd ? 5 : 50}
+                        placeholder={formatCurrencyAmount(totalInCurrency)}
+                      />
+                    </div>
+                    {receivedShort ? (
+                      <p role="status" className="text-xs text-destructive">
+                        {t("checkout.amountShort")}
+                      </p>
+                    ) : (
+                      received > 0 && (
+                        <div className="flex justify-between text-sm font-semibold">
+                          <span>{t("checkout.changeDue")}</span>
+                          <span>{formatCurrencyAmount(changeDue)}</span>
+                        </div>
+                      )
+                    )}
+                  </>
+                )}
+              </div>
+            )}
 
             {paymentMethod === "transfer" && (
               <div className="grid gap-2 rounded-lg border border-input bg-[var(--surface-muted)] p-3">
@@ -1526,7 +1780,7 @@ ${
                 <Button variant="outline" onClick={closeCheckout}>
                   {t("checkout.cancel")}
                 </Button>
-                <Button onClick={handleSubmitOrder} disabled={submitting}>
+                <Button onClick={handleSubmitOrder} disabled={submitting || usdNeedsRate || receivedShort}>
                   {submitting ? (
                     t("checkout.saving")
                   ) : paymentMethod === "card" ? (
@@ -1544,12 +1798,47 @@ ${
         </DialogContent>
       </Dialog>
 
+      {/* Exchange rate dialog */}
+      <Dialog open={showRate} onOpenChange={setShowRate}>
+        <DialogContent className="max-h-[90dvh] overflow-y-auto overscroll-contain sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t("checkout.exchangeRateTitle")}</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-2 py-2">
+            <p className="text-sm text-[var(--text-muted)]">{t("checkout.exchangeRateHint")}</p>
+            <Label>{t("checkout.exchangeRateLabel")}</Label>
+            <CurrencyInput value={rateInput} onChange={setRateInput} step={0.1} placeholder="18.00" />
+            {rate && (
+              <p className="text-xs text-[var(--text-muted)]">
+                {t("checkout.exchangeRateUpdated", {
+                  when: new Date(rate.updatedAt).toLocaleString(lang),
+                  who: rate.updatedBy || "-",
+                })}
+              </p>
+            )}
+            {rateError && (
+              <p role="status" className="text-xs text-destructive">
+                {rateError}
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowRate(false)}>
+              {t("checkout.cancel")}
+            </Button>
+            <Button onClick={saveRate} disabled={rateSaving}>
+              {rateSaving ? t("checkout.saving") : t("checkout.save")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Split sub-check picker */}
       <Dialog
         open={splitPickerTable != null}
         onOpenChange={(open) => !open && setSplitPickerTable(null)}
       >
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="max-h-[90dvh] overflow-y-auto overscroll-contain sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
               {t("checkout.table")} {splitPickerTable} — {t("checkout.splitCheck")}
@@ -1923,7 +2212,7 @@ ${
 
       {/* Recent orders dialog */}
       <Dialog open={showOrders} onOpenChange={setShowOrders}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="max-h-[90dvh] overflow-y-auto overscroll-contain sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{t("checkout.recentOrders")}</DialogTitle>
           </DialogHeader>

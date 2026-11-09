@@ -509,7 +509,77 @@ export type Order = {
   mergedInto?: string;
   mergedFrom?: string[];
   splitFrom?: string;
+  // --- Sale ticket ---
+  /** Human-friendly sale code printed on the ticket, e.g. "CRL-20261108-007". Assigned when the order is first saved. */
+  saleCode?: string;
+  /** Who charged the sale (the signed-in user at payment time). */
+  cashier?: string;
+  /** Currency the customer paid in. All order amounts stay in MXN; this only affects the ticket. Default "MXN". */
+  currency?: Currency;
+  /** MXN per 1 USD at the time of payment (set when currency is USD). */
+  exchangeRate?: number;
+  /** Cash handed over by the customer, in `currency`. */
+  amountTendered?: number;
+  /** Change returned to the customer, in `currency`. */
+  change?: number;
 };
+
+export type Currency = "MXN" | "USD";
+
+// --- Order metadata (counters, settings) ---
+// Stored in the orders table next to the orders; filtered out of order lists.
+
+/** Id prefix for non-order records (sale-code counters, exchange rate) in the orders table. */
+export const META_ID_PREFIX = "meta-";
+
+const EXCHANGE_RATE_ID = `${META_ID_PREFIX}exchange-rate`;
+
+/**
+ * Next sale code, e.g. "CRL-20261108-007": a per-day sequence kept by an atomic
+ * DynamoDB counter, so two tablets can never get the same code. Returns
+ * undefined if the counter fails (the order must still be saved).
+ */
+export async function nextSaleCode(now: Date = new Date()): Promise<string | undefined> {
+  try {
+    const day = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
+    const docClient = await getClient();
+    const res = await docClient.send(
+      new UpdateCommand({
+        TableName: TABLES.orders,
+        Key: { id: `${META_ID_PREFIX}sale-seq-${day}` },
+        UpdateExpression: "ADD seq :one",
+        ExpressionAttributeValues: { ":one": 1 },
+        ReturnValues: "UPDATED_NEW",
+      })
+    );
+    const seq = Number(res.Attributes?.seq ?? 0);
+    return `CRL-${day}-${String(seq).padStart(3, "0")}`;
+  } catch (err) {
+    console.error("Failed to generate sale code:", err);
+    return undefined;
+  }
+}
+
+export type ExchangeRate = { rate: number; updatedAt: string; updatedBy: string };
+
+/** Current MXN-per-USD rate, shared by every device. Null until it is first set. */
+export async function getExchangeRate(): Promise<ExchangeRate | null> {
+  const docClient = await getClient();
+  const res = await docClient.send(
+    new GetCommand({ TableName: TABLES.orders, Key: { id: EXCHANGE_RATE_ID } })
+  );
+  const item = res.Item as (ExchangeRate & { id: string }) | undefined;
+  return item && item.rate > 0 ? { rate: item.rate, updatedAt: item.updatedAt, updatedBy: item.updatedBy } : null;
+}
+
+export async function setExchangeRate(rate: number, updatedBy: string): Promise<ExchangeRate> {
+  const record = { rate, updatedAt: new Date().toISOString(), updatedBy };
+  const docClient = await getClient();
+  await docClient.send(
+    new PutCommand({ TableName: TABLES.orders, Item: { id: EXCHANGE_RATE_ID, ...record } })
+  );
+  return record;
+}
 
 export type OrderInput = Omit<Order, "id" | "createdAt">;
 
@@ -519,8 +589,8 @@ export async function fetchOrders(): Promise<Order[]> {
     new ScanCommand({ TableName: TABLES.orders })
   );
   const items = ((result.Items || []) as Order[]).filter(
-    // Cash reconciliations share this table; they are not orders.
-    (o) => !String(o.id).startsWith(CORTE_ID_PREFIX)
+    // Cash reconciliations and metadata (counters, settings) share this table; they are not orders.
+    (o) => !String(o.id).startsWith(CORTE_ID_PREFIX) && !String(o.id).startsWith(META_ID_PREFIX)
   );
   return items.sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
 }
@@ -703,6 +773,7 @@ export async function saveOpenCheck(
   const newId = `ord-${Date.now()}`;
   const record: Order = {
     id: newId,
+    saleCode: await nextSaleCode(),
     createdAt: new Date().toISOString(),
     tableLabel: check.tableLabel,
     server: check.server,
@@ -765,9 +836,41 @@ export async function closeCheckPaid(
     paymentMethod: PaymentMethod;
     /** S3 key of the transfer proof image, when one was attached. */
     transferEvidenceKey?: string;
+    /** Sale-ticket details (see Order). */
+    cashier?: string;
+    currency?: Currency;
+    exchangeRate?: number;
+    amountTendered?: number;
+    change?: number;
   }
-): Promise<void> {
+): Promise<{ paidAt: string }> {
   const docClient = await getClient();
+  const paidAt = new Date().toISOString();
+  const extras: Record<string, unknown> = {
+    transferEvidenceKey: finalize.transferEvidenceKey,
+    cashier: finalize.cashier,
+    currency: finalize.currency,
+    exchangeRate: finalize.exchangeRate,
+    amountTendered: finalize.amountTendered,
+    change: finalize.change,
+  };
+  // Only write the optional fields that have a value.
+  const names: Record<string, string> = { "#s": "status", "#tot": "total" };
+  const values: Record<string, unknown> = {
+    ":open": "open" as OrderStatus,
+    ":paid": "paid" as OrderStatus,
+    ":tip": finalize.tip,
+    ":total": finalize.total,
+    ":pm": finalize.paymentMethod,
+    ":paidAt": paidAt,
+  };
+  let extraSet = "";
+  for (const [key, value] of Object.entries(extras)) {
+    if (value === undefined) continue;
+    names[`#x_${key}`] = key;
+    values[`:x_${key}`] = value;
+    extraSet += `, #x_${key} = :x_${key}`;
+  }
   await docClient.send(
     new UpdateCommand({
       TableName: TABLES.orders,
@@ -776,25 +879,23 @@ export async function closeCheckPaid(
       UpdateExpression:
         "SET #s = :paid, tip = :tip, #tot = :total, paymentMethod = :pm, " +
         "netAmount = :total, paidAt = :paidAt" +
-        (finalize.transferEvidenceKey ? ", transferEvidenceKey = :evidence" : ""),
-      ExpressionAttributeNames: { "#s": "status", "#tot": "total" },
-      ExpressionAttributeValues: {
-        ":open": "open" as OrderStatus,
-        ":paid": "paid" as OrderStatus,
-        ":tip": finalize.tip,
-        ":total": finalize.total,
-        ":pm": finalize.paymentMethod,
-        ":paidAt": new Date().toISOString(),
-        ...(finalize.transferEvidenceKey ? { ":evidence": finalize.transferEvidenceKey } : {}),
-      },
+        extraSet,
+      ExpressionAttributeNames: names,
+      ExpressionAttributeValues: values,
     })
   );
+  return { paidAt };
 }
 
 export async function createOrder(order: OrderInput): Promise<Order> {
   const docClient = await getClient();
   const id = `ord-${Date.now()}`;
-  const record: Order = { id, createdAt: new Date().toISOString(), ...order };
+  const record: Order = {
+    id,
+    createdAt: new Date().toISOString(),
+    ...order,
+    saleCode: order.saleCode ?? (await nextSaleCode()),
+  };
 
   await docClient.send(
     new PutCommand({ TableName: TABLES.orders, Item: record })

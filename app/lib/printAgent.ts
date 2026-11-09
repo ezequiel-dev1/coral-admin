@@ -34,6 +34,8 @@ export interface PrintJob {
   feed?: number; // blank lines before the cut, 0..10, default 3
   cut?: boolean; // default true
   openDrawer?: boolean; // pulse the cash drawer, default false; only valid with printer "register"
+  /** Print the Coral logo (bundled in the agent app) centered above `lines`. Register printer only: the agent answers 400 for "kitchen", so always send `printer: "register"` with it. */
+  logo?: boolean;
 }
 
 // Characters the printer's IBM437 code page can show beyond plain ASCII.
