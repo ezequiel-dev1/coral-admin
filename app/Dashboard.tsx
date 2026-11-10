@@ -86,17 +86,25 @@ export function Dashboard() {
     (g) => g === "Administrator" || g === "Overlord"
   ) ?? false;
 
+  // Managers get the day-to-day pages (Orders, Checkout); admin-only pages need Administrator/Overlord.
+  const isStaff = isPrivileged || (user?.groups?.includes("Manager") ?? false);
+
   const allNavItems = [
-    { key: "Overview", label: t("nav.overview"), icon: LayoutDashboard, public: true },
-    { key: "Orders", label: t("nav.orders"), icon: ClipboardList, public: false },
+    { key: "Overview", label: t("nav.overview"), icon: LayoutDashboard, public: false },
+    { key: "Orders", staff: true, label: t("nav.orders"), icon: ClipboardList, public: false },
     { key: "Reservations", label: t("nav.reservations"), icon: CalendarDays, public: false },
-    { key: "Checkout", label: t("nav.checkout"), icon: ShoppingCart, public: false },
+    { key: "Checkout", staff: true, label: t("nav.checkout"), icon: ShoppingCart, public: false },
     { key: "Menu Items", label: t("nav.menuItems"), icon: UtensilsCrossed, public: false },
     { key: "Menu Ingredients", label: t("nav.menuIngredients"), icon: Carrot, public: false },
     { key: "Employees", label: t("nav.employees"), icon: Users, public: false },
   ];
 
-  const navItems = allNavItems.filter((item) => item.public || isPrivileged);
+  const navItems = allNavItems.filter((item) =>
+    item.public || isPrivileged || (item.staff && isStaff)
+  );
+
+  // If the requested tab isn't allowed for this user (e.g. default "Overview"), fall back to their first one (Orders for managers).
+  const activeTab = navItems.some((i) => i.key === tab) ? tab : navItems[0]?.key ?? tab;
 
   return (
     <main className="app-shell">
@@ -117,7 +125,7 @@ export function Dashboard() {
               const btn = (
                 <button
                   key={item.key}
-                  className={tab === item.key ? "nav-item active" : "nav-item"}
+                  className={activeTab === item.key ? "nav-item active" : "nav-item"}
                   onClick={() => setTab(item.key)}
                   title={sidebarOpen ? undefined : item.label}
                 >
@@ -178,13 +186,13 @@ export function Dashboard() {
         </header>
 
         <div className="content">
-          {tab === "Overview" && <OverviewPage />}
-          {isPrivileged && tab === "Orders" && <OrdersPage />}
-          {isPrivileged && tab === "Reservations" && <ReservationsPage />}
-          {isPrivileged && tab === "Checkout" && <CheckoutPage />}
-          {isPrivileged && tab === "Menu Items" && <MenuItemsPage />}
-          {isPrivileged && tab === "Menu Ingredients" && <MenuIngredientsPage />}
-          {isPrivileged && tab === "Employees" && <EmployeesPage />}
+          {isPrivileged && activeTab === "Overview" && <OverviewPage />}
+          {isStaff && activeTab === "Orders" && <OrdersPage />}
+          {isPrivileged && activeTab === "Reservations" && <ReservationsPage />}
+          {isStaff && activeTab === "Checkout" && <CheckoutPage />}
+          {isPrivileged && activeTab === "Menu Items" && <MenuItemsPage />}
+          {isPrivileged && activeTab === "Menu Ingredients" && <MenuIngredientsPage />}
+          {isPrivileged && activeTab === "Employees" && <EmployeesPage />}
         </div>
       </section>
     </main>
