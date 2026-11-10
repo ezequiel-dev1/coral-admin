@@ -5,8 +5,6 @@ import { getOrder, markOrderPaid } from "@/app/lib/dynamodb-server";
 
 export const dynamic = "force-dynamic";
 
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-
 /**
  * Fulfillment runs here, NOT on the success page (stripe-best-practices:
  * customers aren't guaranteed to land on the success page). We fulfill on
@@ -91,6 +89,8 @@ async function fulfill(session: Stripe.Checkout.Session) {
 }
 
 export async function POST(req: NextRequest) {
+  // Read per request: in Lambda the secret can be added after cold start.
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!webhookSecret) {
     console.error("[webhook] STRIPE_WEBHOOK_SECRET not set");
     return NextResponse.json(

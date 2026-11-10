@@ -8,24 +8,33 @@ import Stripe from "stripe";
  * call methods on the instance. Do NOT use the deprecated global pattern
  * (`Stripe.setApiKey` / `stripe.api_key = ...`).
  *
- * For the local proof-of-concept the key comes from .env.local. In production
- * it must come from a secrets vault (AWS Secrets Manager), never a committed
- * env file or client code.
+ * Local dev: the (test-mode) key comes from .env.local.
+ * Production: the API Lambda (infra/api/lambda.ts) reads the live key from AWS
+ * Secrets Manager ("stripe-secret-key") and sets STRIPE_SECRET_KEY before this
+ * module is loaded. The key never lives in a committed env file or client code.
  */
 const secretKey = process.env.STRIPE_SECRET_KEY;
+const isProduction = process.env.NEXT_PUBLIC_APP_ENV === "production";
 
 if (!secretKey) {
   throw new Error(
-    "STRIPE_SECRET_KEY is not set. Add it to .env.local (test mode) for the " +
-      "local proof-of-concept."
+    "STRIPE_SECRET_KEY is not set. Locally, add a test key to .env.local; in " +
+      "production it is loaded from AWS Secrets Manager."
   );
 }
 
-// Warn loudly if a live key is used in the local PoC.
-if (secretKey.startsWith("sk_live_") || secretKey.startsWith("rk_live_")) {
+const isLiveKey =
+  secretKey.startsWith("sk_live_") || secretKey.startsWith("rk_live_");
+
+if (isProduction && !isLiveKey) {
   console.warn(
-    "[stripe] WARNING: a LIVE Stripe key is configured. The local " +
-      "proof-of-concept is intended for test mode (sk_test_/rk_test_)."
+    "[stripe] WARNING: production is running with a non-live Stripe key."
+  );
+}
+if (!isProduction && isLiveKey) {
+  console.warn(
+    "[stripe] WARNING: a LIVE Stripe key is configured outside production. " +
+      "Use a test key (sk_test_/rk_test_) for local development."
   );
 }
 

@@ -106,8 +106,13 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  // SITE_URL is set on the production Lambda so redirect URLs never depend on
+  // request headers; locally it is unset and the request origin is used.
   const origin =
-    req.headers.get("origin") ?? req.nextUrl.origin ?? "http://localhost:3000";
+    process.env.SITE_URL ??
+    req.headers.get("origin") ??
+    req.nextUrl.origin ??
+    "http://localhost:3000";
 
   try {
     const session = await stripe.checkout.sessions.create({

@@ -67,6 +67,7 @@ import { uploadCorteEvidence, uploadTransferEvidence, getObjectUrl } from "../li
 import { PaymentQR } from "./PaymentQR";
 import { SeatingChart } from "./SeatingChart";
 import { tableName } from "../lib/tableName";
+import { authedFetch } from "../lib/apiFetch";
 import { printAgent, canUsePrintAgent, toPrinterText, PRINT_COLUMNS } from "../lib/printAgent";
 import { buildSaleTickets } from "../lib/saleTicket";
 import { useIsTouchDevice } from "./IngredientPicker";
@@ -762,7 +763,7 @@ export function CheckoutPage() {
         setCurrentCheckId(checkId);
         await setOpenCheckTip(checkId, tip, total);
 
-        const res = await fetch("/api/checkout", {
+        const res = await authedFetch("/api/checkout", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -881,7 +882,7 @@ export function CheckoutPage() {
     if (pendingSessionId && pendingOrderId) {
       setCancelling(true);
       try {
-        await fetch("/api/checkout/cancel", {
+        await authedFetch("/api/checkout/cancel", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({

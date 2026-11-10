@@ -48,6 +48,25 @@ npm run build
 ./infra/deploy.sh   # Syncs to S3 + invalidates CloudFront
 ```
 
+### Production Stripe API
+
+Card payments need a server, which the static site doesn't have. In production
+`/api/*` is served by a Lambda behind API Gateway and CloudFront (`infra/api.tf`,
+source `infra/api/lambda.ts`, reusing the route handlers in `app/api/**`).
+
+- Live key: AWS Secrets Manager secret `stripe-secret-key` (read by the Lambda only).
+- Webhook signing secret: Secrets Manager secret `stripe-webhook-secret` (plaintext `whsec_...`),
+  created after registering `https://admin.coral.restaurant/api/webhook` as a live-mode
+  webhook in the Stripe Dashboard.
+
+```bash
+npm run build:api                 # bundle the Lambda into infra/api-dist
+cd infra && terraform apply       # create/update API + CloudFront route
+cd .. && npm run deploy:production
+```
+
+Local development still uses `npm run dev:stripe` with a **test** key in `.env.local`.
+
 ## Project Structure
 
 ```

@@ -6,6 +6,7 @@ import { useTranslation } from "../i18n/LanguageProvider";
 import { fetchOrders, type Order } from "../lib/dynamodb";
 import { SEATING_SPOTS, SeatingChart } from "./SeatingChart";
 import { tableName } from "../lib/tableName";
+import { authedFetch } from "../lib/apiFetch";
 
 type Rating = { rating: number; createdAt: string };
 
@@ -144,7 +145,7 @@ export function OverviewPage() {
         console.error("Failed to load orders for overview:", err);
       }
       try {
-        const res = await fetch("/api/feedback", { cache: "no-store" });
+        const res = await authedFetch("/api/feedback", { cache: "no-store" });
         if (res.ok) {
           const data = await res.json();
           if (!cancelled) setRatings(data.ratings ?? []);

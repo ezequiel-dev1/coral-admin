@@ -13,6 +13,11 @@ output "s3_bucket_name" {
   value       = aws_s3_bucket.site.id
 }
 
+output "stripe_webhook_url" {
+  description = "Endpoint URL to register as a LIVE-mode webhook in the Stripe Dashboard"
+  value       = "https://${var.domain_name}/api/webhook"
+}
+
 output "nameservers" {
   description = "Route 53 hosted zone nameservers (already configured in GoDaddy)"
   value       = data.aws_route53_zone.main.name_servers
