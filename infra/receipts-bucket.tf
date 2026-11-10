@@ -25,6 +25,7 @@ resource "aws_s3_bucket_cors_configuration" "receipts" {
       "https://admin.coral.restaurant",
       "https://admin-uat.coral.restaurant",
       "http://localhost:3000",
+      "https://localhost:3000",
       "https://192.168.86.25:3000",
       "https://192.168.1.4:3000",
     ]

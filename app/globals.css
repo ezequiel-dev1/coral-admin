@@ -373,3 +373,48 @@
 
 /* Mobile: sidebar is always a fixed 64px rail; content sits beside it, never under it */
 @media(max-width:700px){.sidebar,.sidebar-collapsed{width:64px;padding:14px 8px 18px}.workspace,.workspace-expanded{margin-left:64px;width:calc(100% - 64px);min-width:0}.sidebar-toggle{display:none !important}.crumb span{font-size:12px;line-height:1.2}}
+
+/* ============================================================
+   Weekly payroll receipt ("Recibo de pago de salarios", Letter page)
+   Mirrors the Coral Word/PDF template: blanks are underlines, values sit on them.
+   ============================================================ */
+.pr-sheet{width:816px;min-height:1056px;background:#fff;color:#262626;box-shadow:0 10px 40px rgba(0,0,0,.4);padding:36px 56px 40px;font-family:Aptos,Calibri,"Segoe UI","Helvetica Neue",Arial,sans-serif;font-size:14.5px;line-height:1.4;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.pr-logo{display:block;width:340px;max-width:100%;height:auto;margin:-14px auto -6px}
+.pr-title{text-align:center;font-size:17px;font-weight:700;color:#262626;margin:4px 0 18px}
+.pr-top{display:grid;grid-template-columns:40% 1fr;margin:0 0 8px}
+.pr-sec{font-weight:700;margin:12px 0 8px;font-size:14.5px}
+.pr-line{display:flex;align-items:baseline;gap:4px;margin:0 0 8px}
+.pr-line.w82{width:82%}
+.pr-line.w76{width:76%}
+.pr-row{display:flex;flex-wrap:wrap;gap:0 22px;margin:0 0 8px;align-items:baseline}
+.pr-row > div{white-space:nowrap}
+.pr-u{display:inline-block;min-width:54px;border-bottom:1px solid #262626;padding:0 4px;text-align:center;line-height:1.25}
+.pr-u.lg{min-width:200px}
+.pr-u.md{min-width:110px}
+.pr-uf{flex:1;min-width:0;border-bottom:1px solid #262626;padding:0 4px;line-height:1.25;min-height:1.25em}
+.pr-sep{padding:0 2px}
+.pr-table{width:100%;border-collapse:collapse;margin:0 0 16px;font-size:14px}
+.pr-table th,.pr-table td{border:1px solid #333;padding:3px 9px;text-align:left;width:50%;height:26px}
+.pr-table th{background:#e6f0f2;font-weight:700}
+.pr-table td .pr-u{min-width:150px;text-align:center}
+.pr-table td .pr-u.desc{min-width:170px;text-align:left}
+.pr-table tr.pr-total td{background:#e6f0f2;font-weight:700}
+.pr-pay{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 16px;margin:0 0 8px}
+.pr-box{display:inline-block;width:13px;height:13px;border:1px solid #262626;margin:0 5px -1px 0;text-align:center;line-height:11px;font-size:11px;font-weight:700}
+.pr-statement{text-align:left;margin:0 0 10px}
+.pr-statement .pr-uf{display:inline-block;min-width:62%;vertical-align:baseline}
+.pr-sign{display:grid;grid-template-columns:1fr 1fr;gap:48px;margin-top:46px;text-align:center;font-size:14.5px}
+.pr-sign div{display:flex;flex-direction:column;align-items:center}
+.pr-sign span{display:block;width:78%;border-top:1px solid #262626;margin-bottom:6px}
+
+@media print{
+  /* Remove the app itself from the print layout (hidden-but-present content
+     would otherwise take up a blank first page). */
+  body:has(.pr-overlay) > *:not(.pr-overlay){display:none !important}
+  html:has(.pr-overlay),body:has(.pr-overlay){height:auto !important;overflow:visible !important;background:#fff !important}
+  .pr-overlay,.pr-overlay *{visibility:visible !important}
+  .pr-overlay{position:static !important;inset:auto !important;height:auto !important;overflow:visible !important;background:#fff !important;display:block !important}
+  .pr-overlay .pm-scroll{display:block;padding:0;gap:0}
+  .pr-sheet{width:100%;min-height:0;height:auto;padding:0;box-shadow:none;break-inside:avoid;page-break-inside:avoid;break-after:auto;page-break-after:auto}
+  .pr-sheet + .pr-sheet{break-before:page;page-break-before:always}
+}

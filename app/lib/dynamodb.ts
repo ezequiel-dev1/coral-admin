@@ -1175,3 +1175,201 @@ export async function deleteReservation(id: string): Promise<void> {
     new DeleteCommand({ TableName: TABLES.reservations, Key: { id } })
   );
 }
+
+// --- Employees & weekly payroll receipts ---
+
+export type EmployeeDocumentType =
+  | "actaNacimiento"
+  | "cedulaProfesional"
+  | "certificadoEstudios"
+  | "comprobanteDomicilio"
+  | "constanciaRegistroPoblacion"
+  | "constanciaSituacionFiscal"
+  | "contactosEmergencia"
+  | "cuentaBanco"
+  | "ine"
+  | "manifestacionActividadAdicional"
+  | "numeroSeguroSocial"
+  | "solicitudEmpleo";
+
+/** A file attached to an employee, stored in S3. */
+export type EmployeeDocument = {
+  key: string;
+  name: string;
+  contentType: string;
+  type: EmployeeDocumentType;
+  uploadedAt: string;
+};
+
+export type EmployeePayMethod = "cash" | "transfer";
+
+/** Payment method printed on a receipt ("other" has a free-text description). */
+export type ReceiptPayMethod = EmployeePayMethod | "other";
+
+export type EmergencyContact = {
+  name: string;
+  relationship: string;
+  phone: string;
+};
+
+export type Employee = {
+  id: string;
+  createdAt: string;
+  fullName: string;
+  position: string;
+  phone: string;
+  address: string;
+  emergencyContacts: EmergencyContact[];
+  /** Mexican tax / social-security identifiers. */
+  curp: string;
+  rfc: string;
+  nss: string;
+  /** Hire date, YYYY-MM-DD. */
+  hireDate: string;
+  /** Fixed weekly salary in MXN. */
+  weeklySalary: number;
+  paymentMethod: EmployeePayMethod;
+  /** Bank account (CLABE) for transfer payments. */
+  clabe: string;
+  active: boolean;
+  notes: string;
+  documents: EmployeeDocument[];
+};
+
+export type EmployeeInput = Omit<Employee, "id" | "createdAt">;
+
+export async function fetchEmployees(): Promise<Employee[]> {
+  const docClient = await getClient();
+  const result = await docClient.send(new ScanCommand({ TableName: TABLES.employees }));
+  const items = ((result.Items || []) as (Employee & { emergencyContact?: string })[]).map((e) => {
+    // Records saved before multiple contacts existed hold a single free-text string.
+    const { emergencyContact: legacy, ...rest } = e;
+    const contacts = e.emergencyContacts ?? (legacy?.trim() ? [{ name: legacy.trim(), relationship: "", phone: "" }] : []);
+    return { ...rest, emergencyContacts: contacts, documents: e.documents ?? [] } as Employee;
+  });
+  return items.sort((a, b) => a.fullName.localeCompare(b.fullName));
+}
+
+export async function createEmployee(input: EmployeeInput): Promise<Employee> {
+  const docClient = await getClient();
+  const record: Employee = {
+    id: `emp-${Date.now()}`,
+    createdAt: new Date().toISOString(),
+    ...input,
+  };
+  await docClient.send(new PutCommand({ TableName: TABLES.employees, Item: record }));
+  return record;
+}
+
+export async function updateEmployee(employee: Employee): Promise<void> {
+  const docClient = await getClient();
+  await docClient.send(
+    new PutCommand({
+      TableName: TABLES.employees,
+      Item: employee,
+      ConditionExpression: "attribute_exists(id)",
+    })
+  );
+}
+
+export async function deleteEmployee(id: string): Promise<void> {
+  const docClient = await getClient();
+  await docClient.send(new DeleteCommand({ TableName: TABLES.employees, Key: { id } }));
+}
+
+/**
+ * One weekly pay receipt. Employee details are copied (snapshot) so reprinting
+ * an old receipt is unaffected by later salary or position changes.
+ */
+export type PayrollReceipt = {
+  id: string;
+  employeeId: string;
+  /** Week end (always a Saturday), YYYY-MM-DD. */
+  weekEnd: string;
+  /** Week start (the Sunday before), YYYY-MM-DD. */
+  weekStart: string;
+  folio: string;
+  employeeName: string;
+  position: string;
+  curp: string;
+  rfc: string;
+  nss: string;
+  paymentMethod: ReceiptPayMethod;
+  /** Description when `paymentMethod` is "other". */
+  paymentMethodOther?: string;
+  weeklySalary: number;
+  daysWorked: number;
+  /** "Días de descanso pagados". */
+  restDaysPaid?: number;
+  /** "Otros pagos": bonuses and other extra payments added to the salary. */
+  otherPay: number;
+  /** Required whenever `otherPay` > 0. */
+  otherPayNote: string;
+  /** "Descuentos": advances, absences, loans... subtracted from the pay. */
+  deductions: number;
+  /** Required whenever `deductions` > 0. */
+  deductionsNote: string;
+  net: number;
+  printedAt?: string;
+  updatedAt: string;
+};
+
+export type PayrollReceiptInput = Omit<PayrollReceipt, "id" | "updatedAt" | "printedAt">;
+
+export function payrollReceiptId(employeeId: string, weekEnd: string): string {
+  return `pay-${weekEnd}-${employeeId}`;
+}
+
+export async function getPayrollReceipt(employeeId: string, weekEnd: string): Promise<PayrollReceipt | null> {
+  const docClient = await getClient();
+  const result = await docClient.send(
+    new GetCommand({ TableName: TABLES.payrollReceipts, Key: { id: payrollReceiptId(employeeId, weekEnd) } })
+  );
+  return (result.Item as PayrollReceipt | undefined) ?? null;
+}
+
+export async function fetchPayrollReceipts(weekEnd: string): Promise<PayrollReceipt[]> {
+  const docClient = await getClient();
+  const result = await docClient.send(
+    new ScanCommand({
+      TableName: TABLES.payrollReceipts,
+      FilterExpression: "weekEnd = :w",
+      ExpressionAttributeValues: { ":w": weekEnd },
+    })
+  );
+  return (result.Items || []) as PayrollReceipt[];
+}
+
+/** Create or overwrite the receipt for an employee + week (one per pair). */
+export async function savePayrollReceipt(
+  input: PayrollReceiptInput,
+  printedAt?: string
+): Promise<PayrollReceipt> {
+  const docClient = await getClient();
+  const record: PayrollReceipt = {
+    ...input,
+    id: payrollReceiptId(input.employeeId, input.weekEnd),
+    updatedAt: new Date().toISOString(),
+    ...(printedAt ? { printedAt } : {}),
+  };
+  await docClient.send(new PutCommand({ TableName: TABLES.payrollReceipts, Item: record }));
+  return record;
+}
+
+export async function markPayrollReceiptsPrinted(ids: string[]): Promise<void> {
+  const docClient = await getClient();
+  const printedAt = new Date().toISOString();
+  await Promise.all(
+    ids.map((id) =>
+      docClient.send(
+        new UpdateCommand({
+          TableName: TABLES.payrollReceipts,
+          Key: { id },
+          ConditionExpression: "attribute_exists(id)",
+          UpdateExpression: "SET printedAt = :p",
+          ExpressionAttributeValues: { ":p": printedAt },
+        })
+      )
+    )
+  );
+}

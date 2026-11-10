@@ -224,7 +224,7 @@ export function SharedLoansPage() {
         )}
       </div>
 
-      <div className="rounded-lg border bg-white">
+      <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)] text-[var(--ink)]">
         {loading ? (
           <p className="p-8 text-center text-sm text-muted-foreground">Loading...</p>
         ) : (
@@ -453,7 +453,7 @@ export function SharedLoansPage() {
             </div>
 
             {previewImage && (
-              <div className="border rounded-lg p-3 bg-[#f9f8f7] flex flex-col items-center justify-center gap-2 animate-in fade-in slide-in-from-right-4 duration-200">
+              <div className="border border-[var(--line)] rounded-lg p-3 bg-[var(--table-head)] flex flex-col items-center justify-center gap-2 animate-in fade-in slide-in-from-right-4 duration-200">
                 <img src={previewImage} alt="Attachment" className="max-w-full max-h-[480px] rounded-md object-contain shadow-sm" />
                 <div className="flex gap-3 mt-1">
                   <button onClick={() => setFullscreen(true)} className="inline-flex items-center gap-1 text-xs text-[#3D4F9B] hover:underline cursor-pointer bg-transparent border-none">

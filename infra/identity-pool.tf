@@ -77,7 +77,9 @@ resource "aws_iam_role_policy" "dynamodb_access" {
             aws_dynamodb_table.menu_items.arn,
             aws_dynamodb_table.menu_ingredients.arn,
             aws_dynamodb_table.orders.arn,
-            aws_dynamodb_table.reservations.arn
+            aws_dynamodb_table.reservations.arn,
+            aws_dynamodb_table.employees.arn,
+            aws_dynamodb_table.payroll_receipts.arn
           ],
           # Production tables, same scope as UAT. Feedback is excluded because
           # it is only written server-side (not via browser Cognito creds).

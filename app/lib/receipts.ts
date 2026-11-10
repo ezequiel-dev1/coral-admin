@@ -123,3 +123,33 @@ export async function uploadCorteEvidence(file: File): Promise<string> {
 
   return key;
 }
+
+/**
+ * Uploads an employee document (INE, CURP, contract, proof of address...)
+ * under the `employee-documents/<employeeId>/` key prefix. Returns the object key.
+ */
+export async function uploadEmployeeDocument(employeeId: string, file: File): Promise<string> {
+  const client = await getS3Client();
+  const ext = file.name.includes(".") ? file.name.split(".").pop() : "";
+  const rand = Math.random().toString(36).slice(2, 8);
+  const key = `employee-documents/${employeeId}/${Date.now()}-${rand}${ext ? `.${ext}` : ""}`;
+
+  const command = new PutObjectCommand({
+    Bucket: BUCKET,
+    Key: key,
+    ContentType: file.type || "application/octet-stream",
+  });
+  const url = await getSignedUrl(client, command, { expiresIn: 300 });
+
+  const response = await fetch(url, {
+    method: "PUT",
+    body: file,
+    headers: { "Content-Type": file.type || "application/octet-stream" },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to upload employee document: ${response.status}`);
+  }
+
+  return key;
+}

@@ -14,6 +14,8 @@ locals {
     "orders"           = { hash_key = "id", range_key = null }
     "feedback"         = { hash_key = "id", range_key = null }
     "reservations"     = { hash_key = "id", range_key = null }
+    "employees"        = { hash_key = "id", range_key = null }
+    "payroll-receipts" = { hash_key = "id", range_key = null }
     "loan-charges"     = { hash_key = "loanId", range_key = "chargeId" }
   }
 }

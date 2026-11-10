@@ -100,9 +100,9 @@ export function CoralDataGrid<T extends Record<string, unknown>>({
   const filteredRows = table.getFilteredRowModel().rows.map((r) => r.original);
 
   return (
-    <div className="rounded-lg border bg-white flex flex-col" style={{ height }}>
+    <div className="rounded-lg border border-[var(--line)] bg-[var(--surface)] text-[var(--ink)] flex flex-col" style={{ height }}>
       {/* Search */}
-      <div className="p-2 border-b">
+      <div className="p-2 border-b border-[var(--line)]">
         <input
           type="text"
           value={globalFilter}
@@ -121,13 +121,13 @@ export function CoralDataGrid<T extends Record<string, unknown>>({
             className="text-[13px] border-collapse"
             style={{ width: table.getTotalSize(), minWidth: "100%", tableLayout: "fixed" }}
           >
-            <thead className="sticky top-0 bg-[#f9f8f7] z-10">
+            <thead className="sticky top-0 bg-[var(--table-head)] z-10">
               {table.getHeaderGroups().map((headerGroup) => (
                 <tr key={headerGroup.id}>
                   {headerGroup.headers.map((header) => (
                     <th
                       key={header.id}
-                      className="px-3 py-1 text-left font-semibold text-sm border-b border-r border-[#e7e7e0] whitespace-nowrap select-none relative"
+                      className="px-3 py-1 text-left font-semibold text-sm border-b border-r border-[var(--line)] whitespace-nowrap select-none relative"
                       style={{ width: header.getSize() }}
                     >
                       {header.isPlaceholder ? null : (
@@ -151,7 +151,7 @@ export function CoralDataGrid<T extends Record<string, unknown>>({
                               value={(header.column.getFilterValue() as string) ?? ""}
                               onChange={(e) => header.column.setFilterValue(e.target.value)}
                               placeholder="Filter..."
-                              className="h-5 w-full rounded border border-[#e7e7e0] bg-white px-1.5 text-[11px] font-normal outline-none focus:border-[#3D4F9B]"
+                              className="h-5 w-full rounded border border-[var(--line)] bg-[var(--input-bg)] text-[var(--ink)] px-1.5 text-[11px] font-normal outline-none focus:border-[#3D4F9B]"
                             />
                           )}
                         </div>
@@ -176,11 +176,11 @@ export function CoralDataGrid<T extends Record<string, unknown>>({
             </thead>
             <tbody>
               {table.getRowModel().rows.map((row) => (
-                <tr key={row.id} className="border-b border-[#e7e7e0] hover:bg-[#faf9f8]">
+                <tr key={row.id} className="border-b border-[var(--line)] hover:bg-[var(--row-hover)]">
                   {row.getVisibleCells().map((cell) => (
                     <td
                       key={cell.id}
-                      className="px-3 py-1.5 border-r border-[#e7e7e0] align-middle overflow-hidden text-ellipsis"
+                      className="px-3 py-1.5 border-r border-[var(--line)] align-middle overflow-hidden text-ellipsis"
                       style={{ width: cell.column.getSize() }}
                     >
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -194,7 +194,7 @@ export function CoralDataGrid<T extends Record<string, unknown>>({
       </div>
 
       {/* Footer: summary + pagination */}
-      <div className="flex items-center justify-between px-3 py-2 border-t bg-[#f9f8f7] text-xs shrink-0">
+      <div className="flex items-center justify-between px-3 py-2 border-t border-[var(--line)] bg-[var(--table-head)] text-xs shrink-0">
         <div className="flex items-center gap-5">
           {footerSummary && footerSummary(filteredRows)}
         </div>
