@@ -86,8 +86,10 @@ export function Dashboard() {
     (g) => g === "Administrator" || g === "Overlord"
   ) ?? false;
 
-  // Managers get the day-to-day pages (Orders, Checkout); admin-only pages need Administrator/Overlord.
-  const isStaff = isPrivileged || (user?.groups?.includes("Manager") ?? false);
+  // Managers and Meseros get the day-to-day pages (Orders, Checkout); admin-only pages need Administrator/Overlord.
+  const isStaff =
+    isPrivileged ||
+    (user?.groups?.some((g) => g === "Manager" || g === "Mesero") ?? false);
 
   const allNavItems = [
     { key: "Overview", label: t("nav.overview"), icon: LayoutDashboard, public: false },
@@ -181,6 +183,9 @@ export function Dashboard() {
             <Button variant="ghost" size="icon" className="text-[#E48664] relative" aria-label="Notifications">
               <Bell size={18} />
               <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-[#E48664] rounded-full" />
+            </Button>
+            <Button variant="ghost" size="icon" onClick={logout} aria-label="Sign out" className="text-[#E48664] hover:text-[#E48664] hover:bg-[#E48664]/10">
+              <LogOut size={18} />
             </Button>
           </div>
         </header>

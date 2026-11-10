@@ -842,6 +842,10 @@ export async function closeCheckPaid(
     exchangeRate?: number;
     amountTendered?: number;
     change?: number;
+    /** In-person Stripe payment (Tap to Pay) matched to this check, with its real fee/net. */
+    stripePaymentIntentId?: string;
+    processingFee?: number;
+    netAmount?: number;
   }
 ): Promise<{ paidAt: string }> {
   const docClient = await getClient();
@@ -853,6 +857,8 @@ export async function closeCheckPaid(
     exchangeRate: finalize.exchangeRate,
     amountTendered: finalize.amountTendered,
     change: finalize.change,
+    stripePaymentIntentId: finalize.stripePaymentIntentId,
+    processingFee: finalize.processingFee,
   };
   // Only write the optional fields that have a value.
   const names: Record<string, string> = { "#s": "status", "#tot": "total" };
@@ -861,6 +867,7 @@ export async function closeCheckPaid(
     ":paid": "paid" as OrderStatus,
     ":tip": finalize.tip,
     ":total": finalize.total,
+    ":net": finalize.netAmount ?? finalize.total,
     ":pm": finalize.paymentMethod,
     ":paidAt": paidAt,
   };
@@ -878,7 +885,7 @@ export async function closeCheckPaid(
       ConditionExpression: "attribute_exists(id) AND #s = :open",
       UpdateExpression:
         "SET #s = :paid, tip = :tip, #tot = :total, paymentMethod = :pm, " +
-        "netAmount = :total, paidAt = :paidAt" +
+        "netAmount = :net, paidAt = :paidAt" +
         extraSet,
       ExpressionAttributeNames: names,
       ExpressionAttributeValues: values,

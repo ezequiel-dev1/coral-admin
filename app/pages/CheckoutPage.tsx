@@ -37,6 +37,7 @@ import {
   Camera,
   X,
   DollarSign,
+  Smartphone,
 } from "lucide-react";
 import {
   fetchOrders,
@@ -68,6 +69,7 @@ import { PaymentQR } from "./PaymentQR";
 import { SeatingChart } from "./SeatingChart";
 import { tableName } from "../lib/tableName";
 import { authedFetch } from "../lib/apiFetch";
+import type { CardPresentPayment } from "../lib/cardPresent";
 import { printAgent, canUsePrintAgent, toPrinterText, PRINT_COLUMNS } from "../lib/printAgent";
 import { buildSaleTickets } from "../lib/saleTicket";
 import { useIsTouchDevice } from "./IngredientPicker";
@@ -82,6 +84,22 @@ const TRANSFER_DETAILS = {
   bank: "BBVA",
   clabe: "012028001266858382",
 };
+
+/** Word-wrap text to the thermal printer width. */
+function wrapPrintText(text: string, width = PRINT_COLUMNS): string[] {
+  const lines: string[] = [];
+  let current = "";
+  for (const word of text.split(/\s+/)) {
+    if (current && current.length + 1 + word.length > width) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = current ? `${current} ${word}` : word;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
 
 // Menu prices already include IVA, so no tax is added on top.
 const TAX_RATE = 0;
@@ -118,6 +136,13 @@ export function CheckoutPage() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
   const [orderNotes, setOrderNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
+
+  // Card charged by hand in the Stripe Dashboard app (Tap to Pay). Recorded as a
+  // "card" payment; `tapPayments` are recent in-person Stripe payments we poll for
+  // so the cashier can match one to this check by amount.
+  const [stripeApp, setStripeApp] = useState(false);
+  const [tapPayments, setTapPayments] = useState<CardPresentPayment[]>([]);
+  const [tapError, setTapError] = useState(false);
 
   // Card-via-QR payment flow
   const [cardPhase, setCardPhase] = useState<CardPayPhase>("idle");
@@ -174,6 +199,9 @@ export function CheckoutPage() {
   const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
   const evidenceInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  // Transfer proof pickers: photo library and tablet camera.
+  const proofGalleryInputRef = useRef<HTMLInputElement>(null);
+  const proofCameraInputRef = useRef<HTMLInputElement>(null);
   const isTouchDevice = useIsTouchDevice();
   // "new" = fill in today's corte; "history" = review saved ones.
   const [reconcileView, setReconcileView] = useState<"new" | "history">("new");
@@ -422,6 +450,7 @@ export function CheckoutPage() {
     setCurrentCheckId(null);
     setOrderNotes("");
     setPaymentMethod("cash");
+    setStripeApp(false);
     setCurrency("MXN");
     setAmountReceived("");
     setTipInput("");
@@ -443,6 +472,42 @@ export function CheckoutPage() {
     [subtotal, tax, tip]
   );
   const itemCount = useMemo(() => cart.reduce((n, l) => n + l.quantity, 0), [cart]);
+
+  // While the "Card (Stripe app)" option is showing, poll for in-person payments
+  // so the one the cashier just took on the iPhone can be matched to this check.
+  const tapWatching = showCheckout && stripeApp && paymentMethod === "card" && cardPhase === "idle";
+  useEffect(() => {
+    if (!tapWatching) return;
+    let cancelled = false;
+    async function poll() {
+      try {
+        const res = await authedFetch("/api/card-present");
+        if (!res.ok) throw new Error(`card-present ${res.status}`);
+        const data: { payments?: CardPresentPayment[] } = await res.json();
+        if (cancelled) return;
+        setTapPayments(data.payments ?? []);
+        setTapError(false);
+      } catch (err) {
+        console.error("Failed to load card payments:", err);
+        if (!cancelled) setTapError(true);
+      }
+    }
+    poll();
+    const interval = setInterval(poll, 4000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [tapWatching]);
+
+  // Unclaimed payments whose amount equals this check's total (centavo-exact).
+  const tapMatches = useMemo(() => {
+    const used = new Set(
+      orders.map((o) => o.stripePaymentIntentId).filter((id): id is string => !!id)
+    );
+    const cents = Math.round(total * 100);
+    return tapPayments.filter((p) => !used.has(p.id) && Math.round(p.amount * 100) === cents);
+  }, [tapPayments, orders, total]);
 
   // Amounts stay in MXN; for USD the customer is shown the total converted at the current rate.
   const payingUsd = paymentMethod === "cash" && currency === "USD";
@@ -658,6 +723,15 @@ export function CheckoutPage() {
     return new File([blob], `transfer-${Date.now()}.${ext}`, { type: blob.type });
   }
 
+  /** Gallery / camera inputs: take the chosen image as the transfer proof. */
+  function onProofFilePicked(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow picking the same file again
+    if (!file) return;
+    setProofMsg(null);
+    setProofFile(file.type.startsWith("image/") ? proofFromBlob(file) : null);
+  }
+
   /** "Paste" button: read an image copied on the tablet (e.g. from WhatsApp) from the clipboard. */
   async function pasteTransferProof() {
     setProofMsg(null);
@@ -720,6 +794,12 @@ export function CheckoutPage() {
         toPrinterText(`${t("checkout.transferClabe")}: ${TRANSFER_DETAILS.clabe}`),
         "-".repeat(PRINT_COLUMNS),
         { text: toPrinterText(`${t("checkout.total")}: ${formatMoney(total)}`), align: "right", bold: true },
+        "",
+        // Spanish proof-of-transfer notice (wrapped to the printer width).
+        ...wrapPrintText(
+          "Por favor envíe un comprobante por WhatsApp, o muestre la pantalla del teléfono con la confirmación de la transferencia.",
+        ).map((text) => ({ text: toPrinterText(text), align: "center" as const })),
+        { text: "WhatsApp: 664 800 7789", align: "center", bold: true },
       ],
       // Extra blank lines so the total clears the cutter before the paper is cut.
       feed: 7,
@@ -738,11 +818,28 @@ export function CheckoutPage() {
     setPrintingBank(false);
   }
 
-  async function handleSubmitOrder() {
+  /**
+   * Close the check. `tapPayment` is an in-person Stripe payment (Tap to Pay)
+   * the cashier matched to this check; without it, "Card (Stripe app)" is
+   * recorded manually.
+   */
+  async function handleSubmitOrder(tapPayment?: CardPresentPayment) {
     if (cart.length === 0 || !selectedTable) return;
     if (usdNeedsRate || receivedShort) return;
 
-    if (paymentMethod === "card") {
+    if (tapPayment) {
+      // The payment may have been claimed by another tablet since the last refresh.
+      try {
+        const fresh = await fetchOrders();
+        setOrders(fresh);
+        if (fresh.some((o) => o.stripePaymentIntentId === tapPayment.id)) return;
+      } catch (err) {
+        console.error("Failed to verify card payment:", err);
+        return;
+      }
+    }
+
+    if (paymentMethod === "card" && !stripeApp) {
       // Card payments are completed by the customer on their own phone: we
       // create a Stripe Checkout Session and show its URL as a QR code to
       // scan. The table's open check stays `open`; the Stripe webhook flips it
@@ -841,6 +938,10 @@ export function CheckoutPage() {
         // Cash only: what the customer handed over (defaults to the exact total) and the change.
         amountTendered: isCash ? (received > 0 ? received : totalInCurrency) : undefined,
         change: isCash ? changeDue : undefined,
+        // Matched Tap to Pay payment: keep the real Stripe fee/net for the books.
+        stripePaymentIntentId: tapPayment?.id,
+        processingFee: tapPayment ? tapPayment.fee : undefined,
+        netAmount: tapPayment && tapPayment.net !== null ? tapPayment.net : undefined,
       });
       setProofFile(null);
       setProofMsg(null);
@@ -865,6 +966,7 @@ export function CheckoutPage() {
     setCardPayUrl(null);
     setPendingOrderId(null);
     setPendingSessionId(null);
+    setTapPayments([]);
   }
 
   /** After a successful card payment: clear the cart and close out. */
@@ -1563,9 +1665,12 @@ ${
               <Label>{t("checkout.paymentMethod")}</Label>
               <select
                 className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                value={paymentMethod}
+                value={stripeApp ? "stripe_app" : paymentMethod}
                 onChange={(e) => {
-                  const method = e.target.value as PaymentMethod;
+                  // "stripe_app" is a UI-only choice: stored as a regular "card" payment.
+                  const isApp = e.target.value === "stripe_app";
+                  const method = (isApp ? "card" : e.target.value) as PaymentMethod;
+                  setStripeApp(isApp);
                   setPaymentMethod(method);
                   // USD is cash-only (card is charged in MXN through Stripe).
                   if (method !== "cash") {
@@ -1576,6 +1681,7 @@ ${
               >
                 <option value="cash">{t("checkout.payCash")}</option>
                 <option value="card">{t("checkout.payCard")}</option>
+                <option value="stripe_app">{t("checkout.payStripeApp")}</option>
                 <option value="transfer">{t("checkout.payTransfer")}</option>
                 <option value="other">{t("checkout.payOther")}</option>
               </select>
@@ -1643,6 +1749,50 @@ ${
                       )
                     )}
                   </>
+                )}
+              </div>
+            )}
+
+            {stripeApp && (
+              <div className="grid gap-2 rounded-lg border border-input bg-[var(--surface-muted)] p-3">
+                <div className="flex items-center gap-2">
+                  <Smartphone size={16} className="text-primary" />
+                  <Label className="mb-0">{t("checkout.stripeAppTitle")}</Label>
+                </div>
+                <p className="text-xs text-[var(--text-muted)]">
+                  {t("checkout.stripeAppInstructions", { amount: formatMoney(total) })}
+                </p>
+                {tapMatches.length === 0 ? (
+                  <div role="status" className="flex items-center gap-2 text-sm text-[var(--text-muted)]">
+                    <Loader2 size={16} className="animate-spin" />
+                    {tapError ? t("checkout.stripeAppError") : t("checkout.stripeAppWaiting")}
+                  </div>
+                ) : (
+                  <div className="grid gap-2">
+                    {tapMatches.map((p) => (
+                      <div
+                        key={p.id}
+                        className="flex items-center justify-between gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-2"
+                      >
+                        <div className="text-sm">
+                          <div className="font-semibold">
+                            {formatMoney(p.amount)} {p.brand ? `· ${p.brand.toUpperCase()}` : ""}{" "}
+                            {p.last4 ? `•••• ${p.last4}` : ""}
+                          </div>
+                          <div className="text-xs text-[var(--text-muted)]">
+                            {new Date(p.createdAt).toLocaleTimeString(lang, {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </div>
+                        </div>
+                        <Button size="sm" onClick={() => handleSubmitOrder(p)} disabled={submitting}>
+                          <CheckCircle2 data-icon="inline-start" />
+                          {t("checkout.stripeAppConfirm")}
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             )}
@@ -1722,6 +1872,43 @@ ${
                   <ClipboardPaste data-icon="inline-start" />
                   {transferProof ? t("checkout.replaceProof") : t("checkout.pasteProof")}
                 </Button>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => proofGalleryInputRef.current?.click()}
+                    disabled={submitting}
+                  >
+                    <Paperclip data-icon="inline-start" />
+                    {t("checkout.proofFromGallery")}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => proofCameraInputRef.current?.click()}
+                    disabled={submitting}
+                  >
+                    <Camera data-icon="inline-start" />
+                    {t("checkout.proofFromCamera")}
+                  </Button>
+                </div>
+                <input
+                  ref={proofGalleryInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={onProofFilePicked}
+                />
+                <input
+                  ref={proofCameraInputRef}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  className="hidden"
+                  onChange={onProofFilePicked}
+                />
                 {transferProof && (
                   <div className="flex items-start gap-2 rounded-lg border border-input bg-[var(--surface)] p-2">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -1781,9 +1968,15 @@ ${
                 <Button variant="outline" onClick={closeCheckout}>
                   {t("checkout.cancel")}
                 </Button>
-                <Button onClick={handleSubmitOrder} disabled={submitting || usdNeedsRate || receivedShort}>
+                <Button
+                  variant={stripeApp && tapMatches.length > 0 ? "outline" : "default"}
+                  onClick={() => handleSubmitOrder()}
+                  disabled={submitting || usdNeedsRate || receivedShort}
+                >
                   {submitting ? (
                     t("checkout.saving")
+                  ) : stripeApp ? (
+                    t("checkout.stripeAppManual")
                   ) : paymentMethod === "card" ? (
                     <>
                       <QrCode data-icon="inline-start" />

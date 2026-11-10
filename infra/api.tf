@@ -28,6 +28,7 @@ locals {
     "POST /api/webhook"         = false
     "POST /api/feedback"        = false
     "GET /api/feedback"         = true
+    "GET /api/card-present"     = true
     "POST /api/checkout"        = true
     "POST /api/checkout/cancel" = true
   }
