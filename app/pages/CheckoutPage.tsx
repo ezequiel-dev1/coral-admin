@@ -38,6 +38,7 @@ import {
   X,
   DollarSign,
   Smartphone,
+  Inbox,
 } from "lucide-react";
 import {
   fetchOrders,
@@ -250,6 +251,20 @@ export function CheckoutPage() {
     } finally {
       setRateSaving(false);
     }
+  }
+
+  /** Pulse the cash drawer on its own (no receipt). */
+  async function openCashDrawer() {
+    if (!canUsePrintAgent()) {
+      setReceiptMsg({ ok: false, text: t("checkout.drawerNoPrinter") });
+      return;
+    }
+    const result = await printAgent.openDrawer();
+    setReceiptMsg(
+      result.ok
+        ? { ok: true, text: t("checkout.drawerOpened") }
+        : { ok: false, text: t("saleTicket.drawerFailed") },
+    );
   }
 
   /**
@@ -1284,6 +1299,10 @@ ${
             <DollarSign data-icon="inline-start" />
             {t("checkout.exchangeRateButton")}:{" "}
             {rate ? rate.rate.toFixed(2) : t("checkout.exchangeRateNotSet")}
+          </Button>
+          <Button variant="outline" onClick={openCashDrawer}>
+            <Inbox data-icon="inline-start" />
+            {t("checkout.openDrawer")}
           </Button>
           <Button variant="outline" onClick={openReconcile}>
             <Banknote data-icon="inline-start" />

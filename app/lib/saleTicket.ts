@@ -62,6 +62,8 @@ export type SaleTicketOptions = {
   /** Current MXN-per-USD rate, used when the order has no stored rate. */
   exchangeRate?: number;
   now?: Date;
+  /** Marks the ticket "REIMPRESION" (always Spanish) at the top. */
+  reprint?: boolean;
 };
 
 /**
@@ -83,6 +85,10 @@ export function buildSaleTicket(
   const lines: (string | PrintLine)[] = [];
 
   // ---- header -------------------------------------------------------------
+  if (opts.reprint) {
+    lines.push({ text: "*** REIMPRESION ***", align: "center", bold: true, size: 2 });
+    lines.push(EQUALS);
+  }
   if (copy === "restaurant") {
     lines.push({ text: toPrinterText(t("saleTicket.restaurantCopy").toUpperCase()), align: "center", bold: true });
     lines.push(EQUALS);

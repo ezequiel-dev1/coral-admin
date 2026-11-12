@@ -22,6 +22,7 @@ import {
   Minus,
   Pause,
   Pencil,
+  Printer,
   Play,
   Plus,
   RotateCcw,
@@ -71,6 +72,7 @@ import { MenuItemThumb } from "./MenuItemThumb";
 import { tableName } from "../lib/tableName";
 import { printAgent, canUsePrintAgent } from "../lib/printAgent";
 import { buildKitchenTicket } from "../lib/kitchenTicket";
+import { buildSaleTicket } from "../lib/saleTicket";
 
 type T = (key: string, vars?: Record<string, string>) => string;
 
@@ -438,6 +440,9 @@ function OrderEditor({
   const [reason, setReason] = useState("");
   const [showSplit, setShowSplit] = useState(false);
   const [showKitchenConfirm, setShowKitchenConfirm] = useState(false);
+  const [showReprint, setShowReprint] = useState(false);
+  const [reprintCustomerCopy, setReprintCustomerCopy] = useState(false);
+  const { user: currentUser } = useAuth();
 
   const readOnly = draft.status === "paid" || draft.status === "cancelled";
   const serviceType: ServiceType = draft.serviceType ?? "dine-in";
@@ -581,6 +586,34 @@ function OrderEditor({
         }
       }
       onClose(); // back to the orders list
+    });
+  }
+
+  // Paid orders: print the order ticket again (marked "REIMPRESION"), optionally with a customer copy.
+  function confirmReprint() {
+    setShowReprint(false);
+    return run(async () => {
+      if (!canUsePrintAgent()) {
+        setMessage({ kind: "error", text: t("orders.reprintNoPrinter") });
+        return;
+      }
+      const cashier = currentUser?.name || currentUser?.email || "";
+      // Cashier (restaurant) copy is marked as a reprint; none of these jobs opens the cash drawer.
+      const jobs = [buildSaleTicket(draft, t, { cashier, reprint: true }, "restaurant")];
+      // The optional customer copy carries no reprint note.
+      if (reprintCustomerCopy) jobs.push(buildSaleTicket(draft, t, { cashier }, "customer"));
+      // One at a time so the tickets come out in order; stop at the first failure.
+      for (const job of jobs) {
+        const result = await printAgent.print(job);
+        if (!result.ok) {
+          setMessage({
+            kind: "error",
+            text: result.message ? `${t("kitchenTicket.printFailed")} (${result.message})` : t("kitchenTicket.printFailed"),
+          });
+          return;
+        }
+      }
+      setMessage({ kind: "ok", text: t("orders.reprintSent") });
     });
   }
 
@@ -962,6 +995,18 @@ function OrderEditor({
               <Button onClick={handleReopen} disabled={busy || (draft.status === "paid" && draft.paymentMethod === "card")}>
                 <RotateCcw size={14} /> {t("orders.reopen")}
               </Button>
+              {draft.status === "paid" && (
+                <Button
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => {
+                    setReprintCustomerCopy(false);
+                    setShowReprint(true);
+                  }}
+                >
+                  <Printer size={14} /> {t("orders.reprint")}
+                </Button>
+              )}
               {draft.status === "paid" && draft.paymentMethod === "card" && (
                 <p className="text-xs text-[var(--text-muted)]">{t("orders.cardNote")}</p>
               )}
@@ -1069,6 +1114,33 @@ function OrderEditor({
             </Button>
             <Button onClick={confirmSendToKitchen} disabled={busy}>
               <Send size={14} /> {t("orders.kitchenConfirm")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* reprint tickets for a paid order */}
+      <Dialog open={showReprint} onOpenChange={setShowReprint}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("orders.reprintTitle")}</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-[var(--text-muted)]">{t("orders.reprintBody")}</p>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="h-4 w-4"
+              checked={reprintCustomerCopy}
+              onChange={(e) => setReprintCustomerCopy(e.target.checked)}
+            />
+            {t("orders.reprintCustomerCopy")}
+          </label>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowReprint(false)}>
+              {t("orders.kitchenBack")}
+            </Button>
+            <Button onClick={confirmReprint} disabled={busy}>
+              <Printer size={14} /> {t("orders.reprintConfirm")}
             </Button>
           </DialogFooter>
         </DialogContent>
