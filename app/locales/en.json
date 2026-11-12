@@ -7,7 +7,8 @@
     "toDark": "Switch to dark mode",
     "toLight": "Switch to light mode"
   },
-  "notifications": { "title": "Notifications", "empty": "No new notifications", "uberNew": "New Uber Eats order #{{id}}" },
+  "settings": { "title": "UAT settings", "pdfPrinter": "PDF Printer", "pdfPrinterHint": "Open each ticket in a browser print preview instead of using the thermal printer." },
+  "notifications": { "title": "Notifications", "empty": "No new notifications", "uberNew": "New Uber Eats order #{{id}}", "customerPaid": "Customer paid order #{{id}}" },
   "auth": {
     "loading": "Loading...",
     "title": "Coral Reef and Beef",

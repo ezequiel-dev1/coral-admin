@@ -14,6 +14,7 @@ import { ReservationsPage } from "./pages/ReservationsPage";
 import { EmployeesPage } from "./pages/EmployeesPage";
 import { UberTestPage } from "./pages/UberTestPage";
 import { APP_ENV } from "./lib/tables";
+import { PDF_PRINTER_STORAGE_KEY } from "./lib/printAgent";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import {
@@ -30,6 +31,7 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   FlaskConical,
+  Settings,
 } from "lucide-react";
 
 function getInitials(name: string): string {
@@ -77,8 +79,11 @@ export function Dashboard() {
   const [dateStr, setDateStr] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [uberNotifications, setUberNotifications] = useState<Array<{ id: string; title: string; at: string; read: boolean }>>([]);
+  const [uatSettingsOpen, setUatSettingsOpen] = useState(false);
+  const [pdfPrinter, setPdfPrinter] = useState(false);
+  const [uberNotifications, setUberNotifications] = useState<Array<{ id: string; title: string; at: string; read: boolean; kind: "uber" | "paid" }>>([]);
   const knownUberOrderIds = useRef<Set<string> | null>(null);
+  const knownSelfCheckoutPaidIds = useRef<Set<string> | null>(null);
   const audioContext = useRef<AudioContext | null>(null);
 
   function playUberAlert() {
@@ -110,19 +115,36 @@ export function Dashboard() {
   }, [lang]);
 
   useEffect(() => {
+    if (APP_ENV === "uat") setPdfPrinter(localStorage.getItem(PDF_PRINTER_STORAGE_KEY) === "true");
+  }, []);
+
+  function togglePdfPrinter(enabled: boolean) {
+    setPdfPrinter(enabled);
+    localStorage.setItem(PDF_PRINTER_STORAGE_KEY, String(enabled));
+  }
+
+  useEffect(() => {
     let active = true;
     async function checkUberOrders() {
       try {
-        const incoming = (await fetchOrders()).filter((order: Order) => order.source === "uber-eats" && (order.uberWorkflowStatus ?? "new") === "new");
+        const all = await fetchOrders();
+        const incoming = all.filter((order: Order) => order.source === "uber-eats" && (order.uberWorkflowStatus ?? "new") === "new");
         const ids = new Set(incoming.map((order) => order.id));
         if (knownUberOrderIds.current) {
           const fresh = incoming.filter((order) => !knownUberOrderIds.current!.has(order.id));
           if (active && fresh.length) {
-            setUberNotifications((previous) => [...fresh.map((order) => ({ id: order.id, title: order.uberDisplayId || order.uberOrderId || order.id, at: new Date(order.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), read: false })), ...previous].slice(0, 8));
+            setUberNotifications((previous) => [...fresh.map((order) => ({ id: order.id, title: order.uberDisplayId || order.uberOrderId || order.id, at: new Date(order.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), read: false, kind: "uber" as const })), ...previous].slice(0, 8));
             playUberAlert();
           }
         }
         knownUberOrderIds.current = ids;
+        const paid = all.filter((order: Order) => order.status === "paid" && Boolean(order.selfCheckoutToken));
+        const paidIds = new Set(paid.map((order) => order.id));
+        if (knownSelfCheckoutPaidIds.current) {
+          const freshPaid = paid.filter((order) => !knownSelfCheckoutPaidIds.current!.has(order.id));
+          if (active && freshPaid.length) setUberNotifications((previous) => [...freshPaid.map((order) => ({ id: order.id, title: order.saleCode || order.id, at: new Date(order.paidAt || order.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), read: false, kind: "paid" as const })), ...previous].slice(0, 8));
+        }
+        knownSelfCheckoutPaidIds.current = paidIds;
       } catch (error) { console.error("Failed to check Uber orders:", error); }
     }
     checkUberOrders();
@@ -211,9 +233,6 @@ export function Dashboard() {
               </div>
             </>
           )}
-          <Button variant="ghost" size="icon-sm" onClick={logout} aria-label="Sign out" className="ml-auto text-[#E48664] hover:text-[#E48664] hover:bg-[#E48664]/10">
-            <LogOut size={18} />
-          </Button>
         </div>
       </aside>
 
@@ -239,8 +258,9 @@ export function Dashboard() {
               <Bell size={18} />
               {uberNotifications.filter((note) => !note.read).length > 0 && <span className="notification-count">{uberNotifications.filter((note) => !note.read).length}</span>}
             </Button>
-            {notificationsOpen && <div className="notifications-menu"><strong>{t("notifications.title")}</strong>{uberNotifications.length === 0 ? <p>{t("notifications.empty")}</p> : uberNotifications.map((note) => <button className={note.read ? "notification-read" : ""} key={note.id} onClick={() => { setTab("Orders"); setUberNotifications((previous) => previous.map((item) => item.id === note.id ? { ...item, read: true } : item)); setNotificationsOpen(false); }}><span>{t("notifications.uberNew", { id: note.title })}</span><small>{note.at}</small></button>)}</div>}
+            {notificationsOpen && <div className="notifications-menu"><strong>{t("notifications.title")}</strong>{uberNotifications.length === 0 ? <p>{t("notifications.empty")}</p> : uberNotifications.map((note) => <button className={note.read ? "notification-read" : ""} key={`${note.kind}-${note.id}`} onClick={() => { setTab("Orders"); setUberNotifications((previous) => previous.map((item) => item.id === note.id && item.kind === note.kind ? { ...item, read: true } : item)); setNotificationsOpen(false); }}><span>{t(note.kind === "paid" ? "notifications.customerPaid" : "notifications.uberNew", { id: note.title })}</span><small>{note.at}</small></button>)}</div>}
             </div>
+            {APP_ENV === "uat" && <div className="notifications-wrap"><Button variant="ghost" size="icon" onClick={() => setUatSettingsOpen((open) => !open)} className="text-[#E48664]" aria-label="UAT settings"><Settings size={18} /></Button>{uatSettingsOpen && <div className="notifications-menu uat-settings"><strong>{t("settings.title")}</strong><label><span>{t("settings.pdfPrinter")}</span><input type="checkbox" checked={pdfPrinter} onChange={(event) => togglePdfPrinter(event.target.checked)} /></label><p>{t("settings.pdfPrinterHint")}</p></div>}</div>}
             <Button variant="ghost" size="icon" onClick={logout} aria-label="Sign out" className="text-[#E48664] hover:text-[#E48664] hover:bg-[#E48664]/10">
               <LogOut size={18} />
             </Button>

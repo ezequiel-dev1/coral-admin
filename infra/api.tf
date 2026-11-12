@@ -38,6 +38,8 @@ locals {
     "GET /api/card-present"       = true
     "POST /api/checkout"          = true
     "POST /api/checkout/cancel"   = true
+    "GET /api/self-checkout"      = false
+    "POST /api/self-checkout"     = false
   }
 }
 

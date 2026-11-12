@@ -53,6 +53,7 @@ import {
   type CashEvidence,
   saveOpenCheck,
   setOpenCheckTip,
+  setSelfCheckoutToken,
   closeCheckPaid,
   getExchangeRate,
   setExchangeRate,
@@ -116,6 +117,11 @@ function formatMoney(value: number): string {
 
 type CartLine = OrderLineItem;
 
+/** Marketplace orders are dispatched from the Uber board, never settled here. */
+function checkoutOrders(orders: Order[]): Order[] {
+  return orders.filter((order) => order.source !== "uber-eats");
+}
+
 export function CheckoutPage() {
   const { t, lang } = useTranslation();
   const { user } = useAuth();
@@ -134,6 +140,8 @@ export function CheckoutPage() {
 
   // Checkout dialog
   const [showCheckout, setShowCheckout] = useState(false);
+  const [selfCheckoutUrl, setSelfCheckoutUrl] = useState<string | null>(null);
+  const [creatingSelfCheckout, setCreatingSelfCheckout] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
   const [orderNotes, setOrderNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -319,8 +327,8 @@ export function CheckoutPage() {
     setLoading(true);
     try {
       const [ords, checks] = await Promise.all([fetchOrders(), fetchOpenChecks()]);
-      setOrders(ords);
-      setOpenChecks(checks);
+      setOrders(checkoutOrders(ords));
+      setOpenChecks(checkoutOrders(checks));
     } catch (err) {
       console.error("Failed to load checkout data:", err);
     } finally {
@@ -331,7 +339,7 @@ export function CheckoutPage() {
   /** Reload just the open checks (after a table is paid/closed). */
   async function reloadOpenChecks() {
     try {
-      setOpenChecks(await fetchOpenChecks());
+      setOpenChecks(checkoutOrders(await fetchOpenChecks()));
     } catch (err) {
       console.error("Failed to reload open checks:", err);
     }
@@ -425,7 +433,7 @@ export function CheckoutPage() {
           printSaleReceipt(order.id);
           fetchOrders()
             .then((ords) => {
-              if (!cancelled) setOrders(ords);
+              if (!cancelled) setOrders(checkoutOrders(ords));
             })
             .catch(() => {});
         } else if (order.status === "cancelled") {
@@ -847,7 +855,7 @@ export function CheckoutPage() {
       // The payment may have been claimed by another tablet since the last refresh.
       try {
         const fresh = await fetchOrders();
-        setOrders(fresh);
+        setOrders(checkoutOrders(fresh));
         if (fresh.some((o) => o.stripePaymentIntentId === tapPayment.id)) return;
       } catch (err) {
         console.error("Failed to verify card payment:", err);
@@ -971,6 +979,35 @@ export function CheckoutPage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  async function createSelfCheckout() {
+    if (!selectedTable || cart.length === 0) return;
+    setCreatingSelfCheckout(true);
+    try {
+      const checkId = await saveOpenCheck(currentCheckId, {
+        tableLabel: selectedTable, server: user?.name || user?.email || "", items: cart,
+        subtotal, tax, total: Math.round((subtotal + tax) * 100) / 100, notes: orderNotes.trim(),
+      });
+      const token = crypto.randomUUID();
+      await setSelfCheckoutToken(checkId, token);
+      setCurrentCheckId(checkId);
+      setSelfCheckoutUrl(`${window.location.origin}/self-checkout?order=${encodeURIComponent(checkId)}&token=${encodeURIComponent(token)}`);
+    } catch (error) { console.error("Failed to create self checkout:", error); }
+    finally { setCreatingSelfCheckout(false); }
+  }
+
+  /** Print only the self-checkout ticket, never the underlying dashboard. */
+  function printSelfCheckoutCheck() {
+    const qr = document.querySelector("[data-self-checkout-qr]")?.innerHTML;
+    if (!qr || !selfCheckoutUrl) return;
+    const popup = window.open("", "_blank", "width=420,height=720");
+    if (!popup) return;
+    const itemRows = cart.map((line) => `<tr><td>${line.quantity} × ${line.name.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</td><td>${formatMoney(line.unitPrice * line.quantity)}</td></tr>`).join("");
+    popup.document.write(`<!doctype html><html><head><title>Cuenta - Coral</title><style>@page{size:80mm auto;margin:5mm}body{font-family:Arial,sans-serif;color:#111;margin:0;text-align:center}h1{font-size:20px;margin:0 0 4px}.muted{font-size:12px;color:#555}table{width:100%;margin:14px 0;border-collapse:collapse;text-align:left;font-size:12px}td{padding:5px 0;border-bottom:1px solid #ddd}td:last-child{text-align:right}.total{display:flex;justify-content:space-between;font-size:16px;font-weight:700;border-top:2px solid #111;padding-top:8px}.qr{margin:16px auto;width:230px}.qr svg{width:230px;height:230px}</style></head><body><h1>CORAL REEF &amp; BEEF</h1><div class="muted">${selectedTable ?? "Cuenta"}</div><table>${itemRows}</table><div class="total"><span>Total</span><span>${formatMoney(total)}</span></div><div class="qr">${qr}</div><strong>Escanea para pagar</strong><p class="muted">Pago seguro con Stripe</p></body></html>`);
+    popup.document.close();
+    popup.focus();
+    window.setTimeout(() => popup.print(), 200);
   }
 
   /** Close the checkout dialog and reset the card/QR flow. */
@@ -1511,6 +1548,10 @@ ${
                 <Button variant="outline" className="flex-1" onClick={clearCart}>
                   {t("checkout.clear")}
                 </Button>
+                <Button variant="outline" className="flex-1" disabled={creatingSelfCheckout} onClick={createSelfCheckout}>
+                  <Printer data-icon="inline-start" />
+                  {creatingSelfCheckout ? "Preparing…" : "Print check"}
+                </Button>
                 <Button className="flex-1" onClick={() => setShowCheckout(true)}>
                   {t("checkout.checkout")}
                 </Button>
@@ -1519,6 +1560,17 @@ ${
           )}
         </div>
       </div>
+
+      <Dialog open={Boolean(selfCheckoutUrl)} onOpenChange={(open) => !open && setSelfCheckoutUrl(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader><DialogTitle>Customer self checkout</DialogTitle></DialogHeader>
+          {selfCheckoutUrl && <div className="flex flex-col items-center gap-4 py-2 text-center">
+            <p className="text-sm text-[var(--text-muted)]">Print this check or let the customer scan the QR code to securely pay on their phone.</p>
+            <div data-self-checkout-qr className="rounded-xl border border-input bg-white p-3"><PaymentQR url={selfCheckoutUrl} size={230} /></div>
+            <Button onClick={printSelfCheckoutCheck}><Printer data-icon="inline-start" />Print check</Button>
+          </div>}
+        </DialogContent>
+      </Dialog>
 
       {/* Checkout confirmation dialog */}
       <Dialog

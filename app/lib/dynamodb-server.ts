@@ -180,6 +180,18 @@ export async function markOrderPaid(input: MarkOrderPaidInput): Promise<void> {
   );
 }
 
+/** Save a customer-selected tip before creating their embedded Stripe session. */
+export async function setSelfCheckoutTip(id: string, tip: number, total: number): Promise<void> {
+  const client = getServerClient();
+  await client.send(new UpdateCommand({
+    TableName: ORDERS_TABLE, Key: { id },
+    ConditionExpression: "attribute_exists(id) AND #s = :open",
+    UpdateExpression: "SET tip = :tip, #tot = :total, paymentMethod = :method",
+    ExpressionAttributeNames: { "#s": "status", "#tot": "total" },
+    ExpressionAttributeValues: { ":open": "open", ":tip": tip, ":total": total, ":method": "card" },
+  }));
+}
+
 async function scanAll<T>(tableName: string): Promise<T[]> {
   const client = getServerClient();
   const out: T[] = [];

@@ -43,6 +43,8 @@ const ROUTES: Record<string, () => Promise<RouteModule>> = {
   "POST /api/checkout": () => import("../../app/api/checkout/route"),
   "POST /api/checkout/cancel": () =>
     import("../../app/api/checkout/cancel/route"),
+  "GET /api/self-checkout": () => import("../../app/api/self-checkout/route"),
+  "POST /api/self-checkout": () => import("../../app/api/self-checkout/route"),
   "POST /api/webhook": () => import("../../app/api/webhook/route"),
   "POST /api/uber-eats/webhook": () => import("../../app/api/uber-eats/webhook/route"),
   // UAT helper; the route itself returns 404 when built for production.

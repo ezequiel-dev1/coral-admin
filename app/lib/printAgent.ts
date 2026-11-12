@@ -2,6 +2,7 @@
 // Access is restricted by the page's Origin (must be on the agent's allow list); no token is sent.
 
 export const AGENT_URL = "http://127.0.0.1:8765";
+export const PDF_PRINTER_STORAGE_KEY = "coral-pdf-printer";
 
 /** Paper is 48 columns wide at size 1 (48/N characters at size N). */
 export const PRINT_COLUMNS = 48;
@@ -102,6 +103,26 @@ async function call(
   }
 }
 
+function escapeHtml(value: string): string {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/** Opens a browser print preview for UAT users without a thermal printer. */
+function preview(job: PrintJob): AgentResult {
+  const lines = job.lines.map((line) => {
+    const value = typeof line === "string" ? line : line.text;
+    const align = typeof line === "string" ? "left" : line.align ?? "left";
+    const weight = typeof line === "string" || !line.bold ? "normal" : "700";
+    const size = typeof line === "string" ? 1 : line.size ?? 1;
+    return `<div style="text-align:${align};font-weight:${weight};font-size:${size * 12}px;white-space:pre-wrap">${escapeHtml(value)}</div>`;
+  }).join("");
+  const win = window.open("", "_blank", "noopener,noreferrer");
+  if (!win) return { ok: false, status: null, message: "Allow pop-ups to open the print preview.", error: "other" };
+  win.document.write(`<!doctype html><html><head><title>Coral ticket</title><style>@page{size:80mm auto;margin:5mm}body{font-family:ui-monospace,monospace;margin:0;color:#111}header{font:bold 16px system-ui;margin-bottom:12px;text-align:center}</style></head><body><header>Coral Reef &amp; Beef</header>${lines}<script>window.onload=()=>window.print()</script></body></html>`);
+  win.document.close();
+  return { ok: true, status: 200, message: "Print preview opened" };
+}
+
 export const printAgent = {
   status: () => call("GET", "/status"),
   testPrint: (printer: PrinterName) => call("POST", "/print/test", { printer }),
@@ -111,7 +132,12 @@ export const printAgent = {
    * Print a custom job. Kitchen tickets go to "kitchen"; customer receipts go to "register"
    * (set openDrawer for cash payments). Never retried automatically: a 502 may still have printed.
    */
-  print: (job: PrintJob) => call("POST", "/print", job),
+  print: (job: PrintJob) => {
+    if (typeof window !== "undefined" && localStorage.getItem(PDF_PRINTER_STORAGE_KEY) === "true") {
+      return Promise.resolve(preview(job));
+    }
+    return call("POST", "/print", job);
+  },
 };
 
 /** Printing only works in Chrome on the tablet itself (the agent listens on its loopback). */

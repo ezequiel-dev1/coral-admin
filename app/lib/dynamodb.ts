@@ -500,6 +500,8 @@ export type Order = {
   stripeSessionId?: string;
   stripePaymentIntentId?: string | null;
   paidAt?: string;
+  /** Opaque capability used by a customer to open this check on their phone. */
+  selfCheckoutToken?: string;
   // When a table's check is split by item, each resulting sub-check shares the
   // table's label (so the floor plan stays occupied until all are paid) and
   // carries a human label like "Guest 1".
@@ -846,6 +848,19 @@ export async function setOpenCheckTip(
       },
     })
   );
+}
+
+/** Attach (or rotate) the unguessable token used by the customer self-checkout QR. */
+export async function setSelfCheckoutToken(id: string, token: string): Promise<void> {
+  const docClient = await getClient();
+  await docClient.send(new UpdateCommand({
+    TableName: TABLES.orders,
+    Key: { id },
+    ConditionExpression: "attribute_exists(id) AND #s = :open",
+    UpdateExpression: "SET selfCheckoutToken = :token",
+    ExpressionAttributeNames: { "#s": "status" },
+    ExpressionAttributeValues: { ":open": "open" as OrderStatus, ":token": token },
+  }));
 }
 
 /**
