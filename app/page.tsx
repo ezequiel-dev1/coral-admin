@@ -4,6 +4,7 @@ import { AuthProvider } from "./auth/AuthProvider";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { LanguageProvider } from "./i18n/LanguageProvider";
 import { Dashboard } from "./Dashboard";
+import { Toaster } from "@/components/ui/sonner";
 
 export default function Home() {
   return (
@@ -12,6 +13,7 @@ export default function Home() {
         <ProtectedRoute>
           <Dashboard />
         </ProtectedRoute>
+        <Toaster closeButton />
       </AuthProvider>
     </LanguageProvider>
   );

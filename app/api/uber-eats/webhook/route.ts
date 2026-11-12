@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createUberOrder, markUberOrderCancelled } from "@/app/lib/dynamodb-server";
-import { acceptUberOrder, getUberOrder, toCoralUberOrder, verifyUberSignature } from "@/app/lib/uber-eats";
+import { getUberOrder, toCoralUberOrder, verifyUberSignature } from "@/app/lib/uber-eats";
 
 export const dynamic = "force-dynamic";
 
@@ -33,8 +33,7 @@ export async function POST(req: NextRequest) {
     }
     const order = toCoralUberOrder(await getUberOrder(orderId, environment));
     await createUberOrder(order);
-    // Accept after persistence: a successful accept always has a printable POS order.
-    await acceptUberOrder(orderId, order.id, environment);
+    // Staff accepts from the dispatch board, which moves the order to Preparing.
     return new NextResponse(null, { status: 200 });
   } catch (err) {
     console.error("[uber-eats] webhook processing failed:", err);

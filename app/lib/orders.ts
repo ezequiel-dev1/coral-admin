@@ -193,9 +193,9 @@ export async function markOrdersReady(ids: string[]): Promise<void> {
           TableName: TABLES.orders,
           Key: { id },
           ConditionExpression: "#s = :open",
-          UpdateExpression: "SET readyAt = :now",
+          UpdateExpression: "SET readyAt = :now, statusHistory = list_append(if_not_exists(statusHistory, :empty), :event)",
           ExpressionAttributeNames: { "#s": "status" },
-          ExpressionAttributeValues: { ":open": "open", ":now": now },
+          ExpressionAttributeValues: { ":open": "open", ":now": now, ":empty": [], ":event": [{ status: "ready", at: now }] },
         })
       )
     )

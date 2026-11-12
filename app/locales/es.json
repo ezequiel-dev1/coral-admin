@@ -7,6 +7,7 @@
     "toDark": "Cambiar a modo oscuro",
     "toLight": "Cambiar a modo claro"
   },
+  "notifications": { "title": "Notificaciones", "empty": "No hay notificaciones nuevas", "uberNew": "Nueva orden de Uber Eats #{{id}}" },
   "auth": {
     "loading": "Cargando...",
     "title": "Coral Reef and Beef",
@@ -112,6 +113,7 @@
     "guestsChange": "{{n}} cuentas abiertas",
     "avgTurnTime": "Tiempo promedio de mesa",
     "turnTimeChange": "4 min más rápido hoy",
+    "completedOrders": "{{n}} órdenes completadas",
     "salesTonight": "Ventas esta noche",
     "salesPercent": "{{n}} órdenes pagadas",
     "guestSentiment": "Satisfacción del cliente",
@@ -587,6 +589,24 @@
     },
     "markReady": "Marcar como lista",
     "markedReady": "Marcada como lista.",
+    "uber": {
+      "deliveryBoard": "Tablero de entregas",
+      "liveMarketplaceOrders": "Órdenes activas de plataformas",
+      "live": "En vivo",
+      "newOrders": "Órdenes nuevas",
+      "preparing": "En preparación",
+      "acceptAndPrepare": "Aceptar y preparar",
+      "markPickedUp": "Marcar como recogida",
+      "readyForPickup": "Listas para recoger",
+      "completed": "Completadas",
+      "noOrders": "Sin órdenes",
+      "guest": "Cliente de Uber Eats",
+      "item": "artículo",
+      "items": "artículos",
+      "pickupBy": "Recoger antes de las {{time}}",
+      "pickupOrder": "Orden para recoger",
+      "awaitingCourier": "Esperando repartidor"
+    },
     "status": {
       "ready": "Lista",
       "open": "Abierta",

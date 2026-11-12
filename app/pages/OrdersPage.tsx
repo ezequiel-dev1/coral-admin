@@ -18,6 +18,7 @@ import {
   ArrowLeft,
   Ban,
   CheckCircle2,
+  ChevronRight,
   Loader2,
   Minus,
   Pause,
@@ -30,6 +31,8 @@ import {
   Send,
   Split,
   Merge,
+  UtensilsCrossed,
+  Bike,
   XCircle,
 } from "lucide-react";
 import {
@@ -70,6 +73,7 @@ import {
 import { SEATING_SPOTS, SeatingChart } from "./SeatingChart";
 import { MenuItemThumb } from "./MenuItemThumb";
 import { tableName } from "../lib/tableName";
+import { authedFetch } from "../lib/apiFetch";
 import { printAgent, canUsePrintAgent } from "../lib/printAgent";
 import { buildKitchenTicket } from "../lib/kitchenTicket";
 import { buildSaleTicket } from "../lib/saleTicket";
@@ -163,6 +167,10 @@ export function OrdersPage() {
 
   const visible = useMemo(() => {
     return orders.filter((o) => {
+      // Marketplace orders have their own dispatch board above. They remain in
+      // DynamoDB with every other order for reporting, but do not duplicate
+      // the restaurant team's operational queue.
+      if (o.source === "uber-eats") return false;
       if (filter === "all") return true;
       if (filter === "active") return o.status === "open" && !o.readyAt;
       if (filter === "ready") return o.status === "open" && !!o.readyAt;
@@ -171,8 +179,9 @@ export function OrdersPage() {
   }, [orders, filter]);
 
   const counts = useMemo(() => {
-    const c = { active: 0, ready: 0, held: 0, paid: 0, cancelled: 0, all: orders.length };
-    for (const o of orders) {
+    const restaurantOrders = orders.filter((o) => o.source !== "uber-eats");
+    const c = { active: 0, ready: 0, held: 0, paid: 0, cancelled: 0, all: restaurantOrders.length };
+    for (const o of restaurantOrders) {
       if (o.status === "open") {
         if (o.readyAt) c.ready++;
         else c.active++;
@@ -247,6 +256,22 @@ export function OrdersPage() {
     }
   }
 
+  async function transitionUberOrder(order: Order, workflow: "preparing" | "ready" | "completed") {
+    setBusy(true);
+    try {
+      const res = await authedFetch("/api/uber-eats/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "transition_order", orderId: order.uberOrderId, scenario: workflow }) });
+      if (!res.ok) throw new Error("Uber workflow update failed");
+      if (workflow === "preparing" && canUsePrintAgent()) {
+        const menuItems = await fetchMenuItems();
+        const categories = new Map(menuItems.map((item) => [item.id, item.category]));
+        const result = await printAgent.print(buildKitchenTicket(order, (id) => categories.get(id) ?? "", t, "Uber Eats"));
+        if (!result.ok) setError(result.message ? `${t("kitchenTicket.printFailed")} (${result.message})` : t("kitchenTicket.printFailed"));
+      }
+      await load();
+    } catch (err) { console.error("Uber workflow update failed:", err); setError(t("orders.actionError")); }
+    finally { setBusy(false); }
+  }
+
   if (editing) {
     return (
       <OrderEditor
@@ -270,6 +295,8 @@ export function OrdersPage() {
 
   return (
     <>
+      <div className="orders-workspace">
+      <div className="orders-list-panel">
       <section className="hero-row">
         <div>
           <p className="eyebrow">{t("nav.overview")}</p>
@@ -375,6 +402,16 @@ export function OrdersPage() {
         </div>
       )}
 
+      </div>
+      <UberOrdersBoard
+        orders={orders}
+        loading={loading}
+        busy={busy}
+        onOpen={openOrder}
+        onTransition={transitionUberOrder}
+      />
+      </div>
+
       <Dialog open={showMerge} onOpenChange={setShowMerge}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -405,6 +442,81 @@ export function OrdersPage() {
 // ===========================================================================
 // Editor
 // ===========================================================================
+
+type UberOrdersBoardProps = {
+  orders: Order[];
+  loading: boolean;
+  busy: boolean;
+  onOpen: (order: Order) => void;
+  onTransition: (order: Order, workflow: "preparing" | "ready" | "completed") => void;
+};
+
+/** A dedicated prep view for orders delivered by the Uber Eats webhook. */
+function UberOrdersBoard({ orders, loading, busy, onOpen, onTransition }: UberOrdersBoardProps) {
+  const { t } = useTranslation();
+  const uberOrders = orders.filter((order) => order.source === "uber-eats" && order.status !== "cancelled");
+  const columns = [
+    { key: "new", label: t("orders.uber.newOrders"), orders: uberOrders.filter((order) => (order.uberWorkflowStatus ?? "new") === "new") },
+    { key: "preparing", label: t("orders.uber.preparing"), orders: uberOrders.filter((order) => order.uberWorkflowStatus === "preparing") },
+    { key: "ready", label: t("orders.uber.readyForPickup"), orders: uberOrders.filter((order) => order.uberWorkflowStatus === "ready") },
+    { key: "complete", label: t("orders.uber.completed"), orders: uberOrders.filter((order) => order.uberWorkflowStatus === "completed") },
+  ];
+
+  return (
+    <aside className="uber-kanban" aria-label="Uber Eats order board">
+      <div className="uber-kanban-head">
+        <div>
+          <div className="uber-brand"><span>Uber</span> Eats</div>
+          <h2>{t("orders.uber.deliveryBoard")}</h2>
+          <p>{t("orders.uber.liveMarketplaceOrders")}</p>
+        </div>
+        <span className="uber-live"><i /> {t("orders.uber.live")}</span>
+      </div>
+
+      <div className="uber-columns">
+        {columns.map((column) => (
+          <section className={`uber-column uber-column-${column.key}`} key={column.key}>
+            <header>
+              <span>{column.label}</span>
+              <b>{column.orders.length}</b>
+            </header>
+            {loading ? (
+              <div className="uber-empty"><Loader2 className="animate-spin" size={15} /></div>
+            ) : column.orders.length === 0 ? (
+              <div className="uber-empty">{t("orders.uber.noOrders")}</div>
+            ) : (
+              <div className="uber-cards">
+                {column.orders.map((order) => {
+                  const itemCount = order.items.reduce((sum, item) => sum + item.quantity, 0);
+                  const displayId = order.uberDisplayId || order.uberOrderId?.slice(-5) || order.id.slice(-5);
+                  return (
+                    <article className="uber-card" key={order.id}>
+                      <button className="uber-card-main" onClick={() => onOpen(order)}>
+                        <div className="uber-card-id">
+                          <strong>#{displayId}</strong>
+                          <span>{order.customerName || t("orders.uber.guest")}</span>
+                        </div>
+                        <p>{itemCount} {itemCount === 1 ? t("orders.uber.item") : t("orders.uber.items")} · {formatMoney(order.total)}</p>
+                        <small>{order.uberReadyForPickupAt ? t("orders.uber.pickupBy", { time: new Date(order.uberReadyForPickupAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }) : t("orders.uber.pickupOrder")}</small>
+                      </button>
+                      {column.key === "new" && (
+                        <button className="uber-ready-action" onClick={() => onTransition(order, "preparing")} disabled={busy}>
+                          <UtensilsCrossed size={14} /> {t("orders.uber.acceptAndPrepare")} <ChevronRight size={14} />
+                        </button>
+                      )}
+                      {column.key === "preparing" && <button className="uber-ready-action" onClick={() => onTransition(order, "ready")} disabled={busy}><UtensilsCrossed size={14} /> {t("orders.markReady")} <ChevronRight size={14} /></button>}
+                      {column.key === "ready" && <button className="uber-ready-action" onClick={() => onTransition(order, "completed")} disabled={busy}><Bike size={14} /> {t("orders.uber.markPickedUp")} <ChevronRight size={14} /></button>}
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        ))}
+      </div>
+    </aside>
+  );
+}
 
 type ReasonDialog = { kind: "void"; lineId: string } | { kind: "cancel" } | null;
 

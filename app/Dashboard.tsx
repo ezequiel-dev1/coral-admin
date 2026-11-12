@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { fetchOrders, type Order } from "./lib/dynamodb";
 import { useAuth } from "./auth/AuthProvider";
 import { useTranslation } from "./i18n/LanguageProvider";
 import { ThemeToggle } from "./ThemeToggle";
@@ -75,6 +76,29 @@ export function Dashboard() {
   const initials = user ? getInitials(user.name) : "??";
   const [dateStr, setDateStr] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [uberNotifications, setUberNotifications] = useState<Array<{ id: string; title: string; at: string; read: boolean }>>([]);
+  const knownUberOrderIds = useRef<Set<string> | null>(null);
+  const audioContext = useRef<AudioContext | null>(null);
+
+  function playUberAlert() {
+    try {
+      const context = audioContext.current ?? new AudioContext();
+      audioContext.current = context;
+      if (context.state !== "running") return;
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(880, context.currentTime);
+      oscillator.frequency.setValueAtTime(1175, context.currentTime + 0.16);
+      gain.gain.setValueAtTime(0.0001, context.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.16, context.currentTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.42);
+      oscillator.connect(gain).connect(context.destination);
+      oscillator.start();
+      oscillator.stop(context.currentTime + 0.43);
+    } catch (error) { console.warn("Unable to play Uber order alert:", error); }
+  }
 
   useEffect(() => {
     // On narrow screens the sidebar is a fixed icon rail
@@ -84,6 +108,29 @@ export function Dashboard() {
   useEffect(() => {
     setDateStr(new Date().toLocaleDateString(lang, { weekday: "long", day: "numeric", month: "long" }));
   }, [lang]);
+
+  useEffect(() => {
+    let active = true;
+    async function checkUberOrders() {
+      try {
+        const incoming = (await fetchOrders()).filter((order: Order) => order.source === "uber-eats" && (order.uberWorkflowStatus ?? "new") === "new");
+        const ids = new Set(incoming.map((order) => order.id));
+        if (knownUberOrderIds.current) {
+          const fresh = incoming.filter((order) => !knownUberOrderIds.current!.has(order.id));
+          if (active && fresh.length) {
+            setUberNotifications((previous) => [...fresh.map((order) => ({ id: order.id, title: order.uberDisplayId || order.uberOrderId || order.id, at: new Date(order.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), read: false })), ...previous].slice(0, 8));
+            playUberAlert();
+          }
+        }
+        knownUberOrderIds.current = ids;
+      } catch (error) { console.error("Failed to check Uber orders:", error); }
+    }
+    checkUberOrders();
+    const enableAudio = () => { if (!audioContext.current) audioContext.current = new AudioContext(); audioContext.current.resume().catch(() => undefined); };
+    window.addEventListener("pointerdown", enableAudio, { once: true });
+    const timer = window.setInterval(checkUberOrders, 10_000);
+    return () => { active = false; window.clearInterval(timer); window.removeEventListener("pointerdown", enableAudio); };
+  }, []);
 
   const isPrivileged = user?.groups?.some(
     (g) => g === "Administrator" || g === "Overlord"
@@ -187,10 +234,13 @@ export function Dashboard() {
             <Button variant="ghost" size="icon" className="text-[#E48664]" aria-label="Search">
               <Search size={18} />
             </Button>
-            <Button variant="ghost" size="icon" className="text-[#E48664] relative" aria-label="Notifications">
+            <div className="notifications-wrap">
+            <Button variant="ghost" size="icon" onClick={() => setNotificationsOpen((open) => !open)} className="text-[#E48664] relative" aria-label="Notifications">
               <Bell size={18} />
-              <span className="absolute top-1 right-1 w-1.5 h-1.5 bg-[#E48664] rounded-full" />
+              {uberNotifications.filter((note) => !note.read).length > 0 && <span className="notification-count">{uberNotifications.filter((note) => !note.read).length}</span>}
             </Button>
+            {notificationsOpen && <div className="notifications-menu"><strong>{t("notifications.title")}</strong>{uberNotifications.length === 0 ? <p>{t("notifications.empty")}</p> : uberNotifications.map((note) => <button className={note.read ? "notification-read" : ""} key={note.id} onClick={() => { setTab("Orders"); setUberNotifications((previous) => previous.map((item) => item.id === note.id ? { ...item, read: true } : item)); setNotificationsOpen(false); }}><span>{t("notifications.uberNew", { id: note.title })}</span><small>{note.at}</small></button>)}</div>}
+            </div>
             <Button variant="ghost" size="icon" onClick={logout} aria-label="Sign out" className="text-[#E48664] hover:text-[#E48664] hover:bg-[#E48664]/10">
               <LogOut size={18} />
             </Button>

@@ -6,6 +6,7 @@ import type { UberOrder } from "./uber-eats";
  * exactly as Uber sends them, so they exercise the same conversion as real orders.
  */
 export type TestScenario = "simple" | "modifiers" | "large";
+export type TestMenuItem = { id: string; title: string; quantity: number; unitPrice: number };
 
 const mxn = (amount: number) => ({ amount, currency_code: "MXN" });
 
@@ -67,5 +68,33 @@ export function buildTestUberOrder(scenario: TestScenario = "simple"): UberOrder
       ],
     },
     payment: { charges: { sub_total: mxn(12000), tax: mxn(1920), total_fee: mxn(0), total: mxn(13920) } },
+  };
+}
+
+/** Build a UAT-only order from the current synced-menu selection. Prices are centavos. */
+export function buildTestUberOrderFromMenu(items: TestMenuItem[]): UberOrder {
+  const id = randomUUID();
+  const subtotal = items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+  // The platform menu price already represents the customer-facing total for each item.
+  return {
+    id,
+    display_id: id.slice(0, 5).toUpperCase(),
+    current_state: "CREATED",
+    type: "PICK_UP",
+    store: { id: "uat-test-store" },
+    eater: { first_name: "Test", last_name: "Customer" },
+    placed_at: new Date().toISOString(),
+    estimated_ready_for_pickup_at: new Date(Date.now() + 20 * 60_000).toISOString(),
+    cart: {
+      special_instructions: "Menu-builder order created in UAT",
+      items: items.map((item, index) => ({
+        id: item.id,
+        instance_id: String(index + 1),
+        title: item.title,
+        quantity: item.quantity,
+        price: { unit_price: mxn(item.unitPrice), base_unit_price: mxn(item.unitPrice) },
+      })),
+    },
+    payment: { charges: { sub_total: mxn(subtotal), tax: mxn(0), total_fee: mxn(0), total: mxn(subtotal) } },
   };
 }

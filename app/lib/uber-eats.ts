@@ -239,6 +239,7 @@ export function toCoralUberOrder(uber: UberOrder): Order {
     uberStoreId: uber.store?.id,
     uberOrderState: uber.current_state,
     uberReadyForPickupAt: uber.estimated_ready_for_pickup_at,
+    uberWorkflowStatus: "new",
     items,
     subtotal: money(charges?.sub_total),
     tax: money(charges?.tax),
@@ -247,9 +248,10 @@ export function toCoralUberOrder(uber: UberOrder): Order {
     total: money(charges?.total),
     processingFee: 0,
     netAmount: money(charges?.total),
-    status: "paid",
+    // Uber has already collected the payment, but this is still a live kitchen
+    // order. Keep it open until it has progressed through the dispatch board.
+    status: "open",
     paymentMethod: "other",
-    paidAt: new Date().toISOString(),
     notes: uber.cart?.special_instructions ?? "",
     currency: "MXN",
   };

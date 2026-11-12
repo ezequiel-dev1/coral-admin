@@ -7,6 +7,7 @@
     "toDark": "Switch to dark mode",
     "toLight": "Switch to light mode"
   },
+  "notifications": { "title": "Notifications", "empty": "No new notifications", "uberNew": "New Uber Eats order #{{id}}" },
   "auth": {
     "loading": "Loading...",
     "title": "Coral Reef and Beef",
@@ -112,6 +113,7 @@
     "guestsChange": "{{n}} open checks",
     "avgTurnTime": "Average turn time",
     "turnTimeChange": "4 min faster today",
+    "completedOrders": "{{n}} completed orders",
     "salesTonight": "Sales tonight",
     "salesPercent": "{{n}} paid orders",
     "guestSentiment": "Guest sentiment",
@@ -587,6 +589,24 @@
     },
     "markReady": "Mark as ready",
     "markedReady": "Marked as ready.",
+    "uber": {
+      "deliveryBoard": "Delivery board",
+      "liveMarketplaceOrders": "Live marketplace orders",
+      "live": "Live",
+      "newOrders": "New orders",
+      "preparing": "Preparing",
+      "acceptAndPrepare": "Accept & prepare",
+      "markPickedUp": "Mark picked up",
+      "readyForPickup": "Ready for pickup",
+      "completed": "Completed",
+      "noOrders": "No orders",
+      "guest": "Uber Eats guest",
+      "item": "item",
+      "items": "items",
+      "pickupBy": "Pickup by {{time}}",
+      "pickupOrder": "Pickup order",
+      "awaitingCourier": "Awaiting courier"
+    },
     "status": {
       "ready": "Ready",
       "open": "Open",

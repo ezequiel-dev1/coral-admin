@@ -470,6 +470,7 @@ export type ServiceType = "dine-in" | "takeout";
 
 /** Where an order originated. Marketplace orders are already paid by Uber. */
 export type OrderSource = "pos" | "uber-eats";
+export type UberWorkflowStatus = "new" | "preparing" | "ready" | "completed";
 
 export type PaymentMethod = "cash" | "card" | "transfer" | "other";
 
@@ -488,6 +489,10 @@ export type Order = {
   processingFee: number;
   netAmount: number;
   status: OrderStatus;
+  /** Immutable lifecycle events used for service-time reporting. */
+  statusHistory?: Array<{ status: string; at: string }>;
+  /** Completion timestamp for dispatch workflows such as Uber Eats. */
+  completedAt?: string;
   paymentMethod: PaymentMethod;
   notes: string;
   // Set by the Stripe webhook once a card payment succeeds. Absent for cash
@@ -508,6 +513,8 @@ export type Order = {
   uberStoreId?: string;
   uberOrderState?: string;
   uberReadyForPickupAt?: string;
+  /** Restaurant-facing dispatch state; marketplace payment does not close kitchen work. */
+  uberWorkflowStatus?: UberWorkflowStatus;
   /** Default seat for new items (dine-in). */
   seat?: number;
   customerName?: string;
@@ -889,6 +896,8 @@ export async function closeCheckPaid(
     ":net": finalize.netAmount ?? finalize.total,
     ":pm": finalize.paymentMethod,
     ":paidAt": paidAt,
+    ":emptyHistory": [],
+    ":paidHistory": [{ status: "paid", at: paidAt }],
   };
   let extraSet = "";
   for (const [key, value] of Object.entries(extras)) {
@@ -904,7 +913,7 @@ export async function closeCheckPaid(
       ConditionExpression: "attribute_exists(id) AND #s = :open",
       UpdateExpression:
         "SET #s = :paid, tip = :tip, #tot = :total, paymentMethod = :pm, " +
-        "netAmount = :net, paidAt = :paidAt" +
+        "netAmount = :net, paidAt = :paidAt, statusHistory = list_append(if_not_exists(statusHistory, :emptyHistory), :paidHistory)" +
         extraSet,
       ExpressionAttributeNames: names,
       ExpressionAttributeValues: values,

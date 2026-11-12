@@ -43,6 +43,11 @@ function minutesSince(iso: string): number {
   return Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
 }
 
+function formatDuration(minutes: number): string {
+  if (minutes < 60) return `${minutes}m`;
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
 type WeatherData = {
   location: string;
   temperature: string;
@@ -178,6 +183,9 @@ export function OverviewPage() {
       ? todaysRatings.reduce((n, r) => n + r.rating, 0) / todaysRatings.length
       : null;
     const inProgress = [...open].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    const completed = allOrders.filter((o) => o.completedAt || (o.source !== "uber-eats" && o.paidAt));
+    const durations = completed.map((o) => Math.max(0, Math.round((new Date(o.completedAt ?? o.paidAt!).getTime() - new Date(o.createdAt).getTime()) / 60_000))).filter(Number.isFinite);
+    const averageTurnMinutes = durations.length ? Math.round(durations.reduce((sum, minutes) => sum + minutes, 0) / durations.length) : null;
     return {
       open,
       held,
@@ -189,6 +197,8 @@ export function OverviewPage() {
       avgRating,
       inProgress,
       occupied: new Set(open.map((o) => o.tableLabel)),
+      averageTurnMinutes,
+      completedCount: durations.length,
     };
   }, [allOrders, ratings]);
 
@@ -224,8 +234,8 @@ export function OverviewPage() {
         </article>
         <article>
           <span className="metric-icon amber">◷</span>
-          <div><small>{t("overview.avgTurnTime")}</small><strong>1h 38m</strong></div>
-          <p>{t("overview.turnTimeChange")}</p>
+          <div><small>{t("overview.avgTurnTime")}</small><strong>{stats.averageTurnMinutes === null ? "—" : formatDuration(stats.averageTurnMinutes)}</strong></div>
+          <p>{stats.completedCount ? t("overview.completedOrders", { n: String(stats.completedCount) }) : t("overview.turnTimeChange")}</p>
         </article>
         <article>
           <span className="metric-icon mint">$</span>

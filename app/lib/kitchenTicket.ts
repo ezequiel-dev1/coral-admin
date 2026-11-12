@@ -76,6 +76,7 @@ export function buildKitchenTicket(
   lines.push(DOTS);
   if (takeout) {
     lines.push({ text: toPrinterText(t("kitchenTicket.takeout").toUpperCase()), bold: true, size: 2 });
+    if (order.source === "uber-eats") lines.push({ text: "*** UBER EATS ***", align: "center", bold: true });
     if (order.customerName) lines.push(field(t("kitchenTicket.customer").toUpperCase(), order.customerName, true));
   } else {
     lines.push(field(t("kitchenTicket.table").toUpperCase(), tableText, true));

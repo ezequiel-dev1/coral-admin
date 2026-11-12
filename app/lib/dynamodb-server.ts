@@ -72,6 +72,19 @@ export async function createUberOrder(order: Order): Promise<boolean> {
   }
 }
 
+export async function setUberWorkflowStatus(id: string, workflow: "preparing" | "ready" | "completed"): Promise<void> {
+  const client = getServerClient();
+  const ready = workflow === "ready" ? new Date().toISOString() : undefined;
+  await client.send(new UpdateCommand({
+    TableName: UBER_ORDERS_TABLE,
+    Key: { id },
+    ConditionExpression: "attribute_exists(id) AND #source = :source",
+    ExpressionAttributeNames: { "#source": "source" },
+    UpdateExpression: ready ? "SET uberWorkflowStatus = :workflow, uberOrderState = :state, readyAt = :readyAt, statusHistory = list_append(if_not_exists(statusHistory, :empty), :event)" : workflow === "completed" ? "SET uberWorkflowStatus = :workflow, uberOrderState = :state, completedAt = :completedAt, statusHistory = list_append(if_not_exists(statusHistory, :empty), :event)" : "SET uberWorkflowStatus = :workflow, uberOrderState = :state, statusHistory = list_append(if_not_exists(statusHistory, :empty), :event)",
+    ExpressionAttributeValues: { ":source": "uber-eats", ":workflow": workflow, ":state": workflow === "preparing" ? "ACCEPTED" : workflow === "completed" ? "FINISHED" : "ACCEPTED", ":empty": [], ":event": [{ status: workflow, at: new Date().toISOString() }], ...(ready ? { ":readyAt": ready } : workflow === "completed" ? { ":completedAt": new Date().toISOString() } : {}) },
+  }));
+}
+
 /** Mirror an Uber cancellation while never changing an unrelated POS order. */
 export async function markUberOrderCancelled(
   uberOrderId: string,
