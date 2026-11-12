@@ -114,6 +114,33 @@ resource "aws_cloudfront_distribution" "uat_site" {
     max_ttl     = 86400
   }
 
+  # UAT API Gateway (Stripe test mode / Uber). See api-uat.tf.
+  origin {
+    domain_name = replace(aws_apigatewayv2_api.api_uat.api_endpoint, "https://", "")
+    origin_id   = "api-uat"
+
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "https-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
+  }
+
+  # /api/* is never cached and forwards everything except the Host header.
+  ordered_cache_behavior {
+    path_pattern           = "/api/*"
+    allowed_methods        = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+    cached_methods         = ["GET", "HEAD"]
+    target_origin_id       = "api-uat"
+    viewer_protocol_policy = "https-only"
+    compress               = true
+
+    # Managed policies: CachingDisabled / AllViewerExceptHostHeader
+    cache_policy_id          = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
+    origin_request_policy_id = "b689b0a8-53d0-40ab-baf2-68738e2966ac"
+  }
+
   # SPA fallback: same behavior as the production distribution.
   custom_error_response {
     error_code         = 403

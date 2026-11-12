@@ -67,6 +67,31 @@ cd .. && npm run deploy:production
 
 Local development still uses `npm run dev:stripe` with a **test** key in `.env.local`.
 
+### UAT API (Stripe test mode + Uber sandbox)
+
+`admin-uat.coral.restaurant/api/*` is served by its own Lambda, `coral-admin-api-uat`
+(`infra/api-uat.tf`), bundled with `npm run build:api:uat` and limited to the `coral-*` tables.
+Create these secrets by hand first: `stripe-secret-key-uat` (`sk_test_...`) and
+`stripe-webhook-secret-uat` (`whsec_...` from a test-mode webhook pointed at
+`https://admin-uat.coral.restaurant/api/webhook`). The Uber sandbox secret is shared.
+The "Uber Test" tab (UAT only, admins) calls `POST /api/uber-eats/test` to simulate
+orders and cancellations, or replay a signed webhook for a real sandbox order.
+
+### Uber Eats orders
+
+Uber webhook orders and cancellations currently target only the UAT table
+`coral-orders`, even though the endpoint is hosted on the admin API. Only
+`X-Environment: sandbox` events are accepted. View them in the UAT POS.
+
+Uber Eats orders arrive at `POST https://admin.coral.restaurant/api/uber-eats/webhook`.
+The Lambda verifies the raw-body `X-Uber-Signature`, fetches the authoritative
+order, creates one idempotent pre-paid takeout order in Coral, then accepts it
+back to Uber. Configure AWS Secrets Manager secret `uber-eats-client-credentials`
+as JSON with `client_id` and `client_secret`; it is read only by the Lambda.
+In Uber's developer dashboard, set that URL as the primary webhook and grant
+`eats.order` plus `eats.store.orders.read`. Use `UBER_EATS_API_BASE_URL` only
+for a nonstandard sandbox endpoint in local testing.
+
 ## Project Structure
 
 ```

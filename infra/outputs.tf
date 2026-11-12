@@ -59,3 +59,13 @@ output "uat_site_url" {
   description = "The UAT site URL"
   value       = "https://${var.uat_domain_name}"
 }
+
+output "uat_stripe_webhook_url" {
+  description = "Endpoint URL to register as a TEST-mode webhook in the Stripe Dashboard"
+  value       = "https://${var.uat_domain_name}/api/webhook"
+}
+
+output "uat_uber_eats_webhook_url" {
+  description = "Endpoint URL to register as the webhook in the Uber developer dashboard (sandbox app)"
+  value       = "https://${var.uat_domain_name}/api/uber-eats/webhook"
+}

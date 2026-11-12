@@ -44,6 +44,9 @@ const ROUTES: Record<string, () => Promise<RouteModule>> = {
   "POST /api/checkout/cancel": () =>
     import("../../app/api/checkout/cancel/route"),
   "POST /api/webhook": () => import("../../app/api/webhook/route"),
+  "POST /api/uber-eats/webhook": () => import("../../app/api/uber-eats/webhook/route"),
+  // UAT helper; the route itself returns 404 when built for production.
+  "POST /api/uber-eats/test": () => import("../../app/api/uber-eats/test/route"),
   "GET /api/feedback": () => import("../../app/api/feedback/route"),
   "POST /api/feedback": () => import("../../app/api/feedback/route"),
   "GET /api/card-present": () => import("../../app/api/card-present/route"),
@@ -98,6 +101,22 @@ async function loadWebhookSecret(): Promise<void> {
   }
 }
 
+/** Load the Uber client credentials from one JSON secret at cold start. */
+async function loadUberEatsCredentials(): Promise<void> {
+  const secretId = process.env.UBER_EATS_CREDENTIALS_SECRET_ID;
+  if (!secretId || process.env.UBER_EATS_CLIENT_SECRET) return;
+  const res = await secrets.send(new GetSecretValueCommand({ SecretId: secretId }));
+  if (!res.SecretString) throw new Error(`Uber secret "${secretId}" is empty`);
+  let value: unknown;
+  try { value = JSON.parse(res.SecretString); } catch { throw new Error(`Uber secret "${secretId}" must be JSON`); }
+  const credentials = value as { client_id?: unknown; client_secret?: unknown };
+  if (typeof credentials.client_id !== "string" || typeof credentials.client_secret !== "string") {
+    throw new Error(`Uber secret "${secretId}" must contain client_id and client_secret`);
+  }
+  process.env.UBER_EATS_CLIENT_ID = credentials.client_id;
+  process.env.UBER_EATS_CLIENT_SECRET = credentials.client_secret;
+}
+
 let ready: Promise<void> | null = null;
 
 function init(): Promise<void> {
@@ -139,6 +158,7 @@ export async function handler(event: ApiEvent): Promise<ApiResult> {
 
   try {
     await init();
+    if (path.startsWith("/api/uber-eats/")) await loadUberEatsCredentials();
     if (path === "/api/webhook") await loadWebhookSecret();
   } catch (err) {
     console.error("[api] initialization failed:", err);

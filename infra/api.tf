@@ -18,6 +18,12 @@ data "aws_secretsmanager_secret" "stripe_secret_key" {
   name = "stripe-secret-key"
 }
 
+# Created outside Terraform so no Uber credential ever enters state. JSON value:
+# {"client_id":"…","client_secret":"…"}
+data "aws_secretsmanager_secret" "uber_eats_credentials" {
+  name = "uber-eats-client-credentials"
+}
+
 locals {
   stripe_webhook_secret_name = "stripe-webhook-secret"
 
@@ -25,12 +31,13 @@ locals {
   # - webhook: public, protected by Stripe's signature check inside the handler
   # - POST feedback: public, customers rate their order from the Stripe return page
   api_routes = {
-    "POST /api/webhook"         = false
-    "POST /api/feedback"        = false
-    "GET /api/feedback"         = true
-    "GET /api/card-present"     = true
-    "POST /api/checkout"        = true
-    "POST /api/checkout/cancel" = true
+    "POST /api/webhook"           = false
+    "POST /api/uber-eats/webhook" = false
+    "POST /api/feedback"          = false
+    "GET /api/feedback"           = true
+    "GET /api/card-present"       = true
+    "POST /api/checkout"          = true
+    "POST /api/checkout/cancel"   = true
   }
 }
 
@@ -77,6 +84,7 @@ resource "aws_iam_role_policy" "api" {
           data.aws_secretsmanager_secret.stripe_secret_key.arn,
           # Secrets Manager appends a random suffix to the ARN.
           "arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:${local.stripe_webhook_secret_name}-*",
+          data.aws_secretsmanager_secret.uber_eats_credentials.arn,
         ]
       },
       {
@@ -84,6 +92,12 @@ resource "aws_iam_role_policy" "api" {
         Effect   = "Allow"
         Action   = ["dynamodb:GetItem", "dynamodb:UpdateItem"]
         Resource = aws_dynamodb_table.production["orders"].arn
+      },
+      {
+        Sid      = "UberUatOrdersTable"
+        Effect   = "Allow"
+        Action   = ["dynamodb:PutItem", "dynamodb:UpdateItem"]
+        Resource = aws_dynamodb_table.orders.arn
       },
       {
         Sid      = "FeedbackTable"
@@ -114,10 +128,11 @@ resource "aws_lambda_function" "api" {
 
   environment {
     variables = {
-      NEXT_PUBLIC_APP_ENV      = "production"
-      STRIPE_SECRET_ID         = data.aws_secretsmanager_secret.stripe_secret_key.name
-      STRIPE_WEBHOOK_SECRET_ID = local.stripe_webhook_secret_name
-      SITE_URL                 = "https://${var.domain_name}"
+      NEXT_PUBLIC_APP_ENV             = "production"
+      STRIPE_SECRET_ID                = data.aws_secretsmanager_secret.stripe_secret_key.name
+      STRIPE_WEBHOOK_SECRET_ID        = local.stripe_webhook_secret_name
+      UBER_EATS_CREDENTIALS_SECRET_ID = data.aws_secretsmanager_secret.uber_eats_credentials.name
+      SITE_URL                        = "https://${var.domain_name}"
     }
   }
 

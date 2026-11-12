@@ -459,6 +459,9 @@ export type OrderStatus = "open" | "paid" | "cancelled" | "held";
 
 export type ServiceType = "dine-in" | "takeout";
 
+/** Where an order originated. Marketplace orders are already paid by Uber. */
+export type OrderSource = "pos" | "uber-eats";
+
 export type PaymentMethod = "cash" | "card" | "transfer" | "other";
 
 export type Order = {
@@ -489,6 +492,13 @@ export type Order = {
   splitLabel?: string;
   // --- Order module ---
   serviceType?: ServiceType;
+  source?: OrderSource;
+  /** Marketplace order UUID, used to make webhook delivery idempotent. */
+  uberOrderId?: string;
+  uberDisplayId?: string;
+  uberStoreId?: string;
+  uberOrderState?: string;
+  uberReadyForPickupAt?: string;
   /** Default seat for new items (dine-in). */
   seat?: number;
   customerName?: string;

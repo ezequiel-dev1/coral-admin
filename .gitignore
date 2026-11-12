@@ -45,6 +45,8 @@ next-env.d.ts
 # terraform
 infra/api-dist/
 infra/api-dist.zip
+infra/api-dist-uat/
+infra/api-dist-uat.zip
 infra/.terraform/
 infra/*.tfstate
 infra/*.tfstate.backup

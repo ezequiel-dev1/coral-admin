@@ -11,6 +11,8 @@ import { CheckoutPage } from "./pages/CheckoutPage";
 import { OrdersPage } from "./pages/OrdersPage";
 import { ReservationsPage } from "./pages/ReservationsPage";
 import { EmployeesPage } from "./pages/EmployeesPage";
+import { UberTestPage } from "./pages/UberTestPage";
+import { APP_ENV } from "./lib/tables";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import {
@@ -26,6 +28,7 @@ import {
   LogOut,
   PanelLeftClose,
   PanelLeftOpen,
+  FlaskConical,
 } from "lucide-react";
 
 function getInitials(name: string): string {
@@ -41,7 +44,7 @@ export function Dashboard() {
   const { user, logout } = useAuth();
   const { lang, setLang, t } = useTranslation();
 
-  const validTabs = ["Overview", "Orders", "Reservations", "Checkout", "Menu Items", "Menu Ingredients", "Employees"];
+  const validTabs = ["Overview", "Orders", "Reservations", "Checkout", "Menu Items", "Menu Ingredients", "Employees", "Uber Test"];
 
   function getTabFromHash(): string {
     if (typeof window === "undefined") return "Overview";
@@ -91,6 +94,9 @@ export function Dashboard() {
     isPrivileged ||
     (user?.groups?.some((g) => g === "Manager" || g === "Mesero") ?? false);
 
+  // UAT-only tooling: hidden (and its API refuses to run) in production.
+  const showUberTest = APP_ENV !== "production";
+
   const allNavItems = [
     { key: "Overview", label: t("nav.overview"), icon: LayoutDashboard, public: false },
     { key: "Orders", staff: true, label: t("nav.orders"), icon: ClipboardList, public: false },
@@ -99,6 +105,7 @@ export function Dashboard() {
     { key: "Menu Items", label: t("nav.menuItems"), icon: UtensilsCrossed, public: false },
     { key: "Menu Ingredients", label: t("nav.menuIngredients"), icon: Carrot, public: false },
     { key: "Employees", label: t("nav.employees"), icon: Users, public: false },
+    ...(showUberTest ? [{ key: "Uber Test", label: "Uber Test", icon: FlaskConical, public: false }] : []),
   ];
 
   const navItems = allNavItems.filter((item) =>
@@ -198,6 +205,7 @@ export function Dashboard() {
           {isPrivileged && activeTab === "Menu Items" && <MenuItemsPage />}
           {isPrivileged && activeTab === "Menu Ingredients" && <MenuIngredientsPage />}
           {isPrivileged && activeTab === "Employees" && <EmployeesPage />}
+          {isPrivileged && showUberTest && activeTab === "Uber Test" && <UberTestPage />}
         </div>
       </section>
     </main>

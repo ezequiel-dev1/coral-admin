@@ -20,6 +20,8 @@ import { TABLES } from "./tables";
  */
 const REGION = "us-east-1";
 const ORDERS_TABLE = TABLES.orders;
+// Uber testing is isolated from the production Stripe/POS table.
+const UBER_ORDERS_TABLE = "coral-orders";
 const FEEDBACK_TABLE = TABLES.feedback;
 
 let docClient: DynamoDBDocumentClient | null = null;
@@ -39,6 +41,68 @@ export async function getOrder(id: string): Promise<Order | null> {
     new GetCommand({ TableName: ORDERS_TABLE, Key: { id } })
   );
   return (result.Item as Order | undefined) ?? null;
+}
+
+/**
+ * Store a marketplace order exactly once. Uber retries webhooks, so the Uber
+ * order UUID is also the deterministic POS key. A conditional write makes
+ * replay safe without trusting a client-side deduplication cache.
+ */
+export async function createUberOrder(order: Order): Promise<boolean> {
+  const client = getServerClient();
+  try {
+    await client.send(
+      new PutCommand({
+        TableName: UBER_ORDERS_TABLE,
+        Item: JSON.parse(JSON.stringify(order)),
+        ConditionExpression: "attribute_not_exists(id)",
+      })
+    );
+    return true;
+  } catch (err) {
+    if (
+      typeof err === "object" &&
+      err !== null &&
+      "name" in err &&
+      (err as { name?: string }).name === "ConditionalCheckFailedException"
+    ) {
+      return false;
+    }
+    throw err;
+  }
+}
+
+/** Mirror an Uber cancellation while never changing an unrelated POS order. */
+export async function markUberOrderCancelled(
+  uberOrderId: string,
+  reason = "Cancelled in Uber Eats"
+): Promise<void> {
+  const client = getServerClient();
+  try {
+    await client.send(
+      new UpdateCommand({
+        TableName: UBER_ORDERS_TABLE,
+        Key: { id: `uber-${uberOrderId}` },
+        ConditionExpression: "attribute_exists(id) AND source = :source",
+        UpdateExpression: "SET #s = :cancelled, cancelReason = :reason, uberOrderState = :state",
+        ExpressionAttributeNames: { "#s": "status" },
+        ExpressionAttributeValues: {
+          ":source": "uber-eats",
+          ":cancelled": "cancelled" as OrderStatus,
+          ":reason": reason,
+          ":state": "CANCELED",
+        },
+      })
+    );
+  } catch (err) {
+    // Uber may deliver cancellation before a retried new-order webhook. There
+    // is nothing to update yet, and retrying this event cannot improve it.
+    if (
+      typeof err === "object" && err !== null && "name" in err &&
+      (err as { name?: string }).name === "ConditionalCheckFailedException"
+    ) return;
+    throw err;
+  }
 }
 
 /**

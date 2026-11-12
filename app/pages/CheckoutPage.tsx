@@ -441,6 +441,7 @@ export function CheckoutPage() {
   }
 
   function removeLine(menuItemId: string) {
+    if (!confirm(t("checkout.confirmRemoveItem"))) return;
     setCart((prev) => prev.filter((l) => l.menuItemId !== menuItemId));
   }
 
@@ -1922,6 +1923,7 @@ ${
                       variant="ghost"
                       size="icon-sm"
                       onClick={() => {
+                        if (!confirm(t("checkout.confirmRemoveProof"))) return;
                         setProofFile(null);
                         setProofMsg(null);
                       }}
@@ -2363,9 +2365,10 @@ ${
                     size="icon-sm"
                     aria-label={t("checkout.removeEvidence")}
                     title={t("checkout.removeEvidence")}
-                    onClick={() =>
-                      setEvidenceFiles((prev) => prev.filter((_, j) => j !== i))
-                    }
+                    onClick={() => {
+                      if (!confirm(t("checkout.confirmRemoveEvidence"))) return;
+                      setEvidenceFiles((prev) => prev.filter((_, j) => j !== i));
+                    }}
                   >
                     <X />
                   </Button>
