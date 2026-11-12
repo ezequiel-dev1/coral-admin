@@ -16,7 +16,11 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { CurrencyInput } from "@/components/ui/currency-input";
-import { Plus, Pencil, Trash2, ImageOff, ImagePlus, Printer, FileText, Carrot, ClipboardPaste } from "lucide-react";
+import { Plus, Pencil, Trash2, ImageOff, ImagePlus, Printer, FileText, Carrot, ClipboardPaste, UploadCloud, CloudOff, CircleCheck, TriangleAlert } from "lucide-react";
+import { authedFetch } from "../lib/apiFetch";
+import { APP_ENV } from "../lib/tables";
+import { formatPlatformPrice, PLATFORM_MARKUP_PERCENT } from "../lib/pricing";
+import { uberFingerprint } from "../lib/uber-eats-menu";
 import {
   fetchMenuItems,
   fetchMenuIngredients,
@@ -49,6 +53,28 @@ const emptyForm: MenuItemInput = {
   modifierGroups: [],
 };
 
+type UberStatus = "none" | "current" | "stale";
+
+/**
+ * Whether Uber has this item and is up to date with it. Items synced before change
+ * tracking existed have no fingerprint, so they count as out of date until re-synced.
+ */
+function uberStatusOf(item: MenuItem, ingredients: MenuIngredient[]): UberStatus {
+  if (!item.uberSyncedAt) return "none";
+  return item.uberSyncHash === uberFingerprint(item, ingredients) ? "current" : "stale";
+}
+
+// Pre-signed image links last 5 minutes. Cached per key (4 minutes) because the grid
+// remounts its cells whenever the columns change (e.g. ticking a checkbox), which
+// would otherwise blank every image while it re-fetches.
+const IMAGE_URL_TTL_MS = 4 * 60 * 1000;
+const imageUrlCache = new Map<string, { url: string; at: number }>();
+
+function cachedImageUrl(key: string): string {
+  const hit = imageUrlCache.get(key);
+  return hit && Date.now() - hit.at < IMAGE_URL_TTL_MS ? hit.url : "";
+}
+
 function MenuItemImage({
   imageKey,
   onPreview,
@@ -56,13 +82,14 @@ function MenuItemImage({
   imageKey: string;
   onPreview?: (url: string) => void;
 }) {
-  const [url, setUrl] = useState("");
+  const [url, setUrl] = useState(() => cachedImageUrl(imageKey));
 
   useEffect(() => {
-    if (!imageKey) return;
+    if (!imageKey || cachedImageUrl(imageKey)) return;
     let active = true;
     getObjectUrl(imageKey)
       .then((u) => {
+        imageUrlCache.set(imageKey, { url: u, at: Date.now() });
         if (active) setUrl(u);
       })
       .catch((err) => console.error("Failed to load image:", err));
@@ -136,9 +163,51 @@ export function MenuItemsPage() {
   // Printable flyer view
   const [showFlyer, setShowFlyer] = useState(false);
 
+  // Uber Eats menu sync (sandbox/UAT only, admins only)
+  const showUber = isAdmin && APP_ENV !== "production";
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [uberStoreId, setUberStoreId] = useState(() =>
+    typeof window === "undefined" ? "" : localStorage.getItem("coral.uberStoreId") ?? ""
+  );
+  const [uberBusy, setUberBusy] = useState(false);
+  const storeSelectRef = useRef<HTMLSelectElement>(null);
+  const [uberStores, setUberStores] = useState<{ id: string; name: string; address: string }[]>([]);
+  const [storesState, setStoresState] = useState<"idle" | "loading" | "error">("idle");
+  const [storesReload, setStoresReload] = useState(0);
+  const [uberMessage, setUberMessage] = useState<{ ok: boolean; text: string } | null>(null);
+
+
   useEffect(() => {
     loadItems();
   }, []);
+
+  // Stores the Uber app can publish to, for the picker.
+  useEffect(() => {
+    if (!showUber) return;
+    let active = true;
+    Promise.resolve()
+      .then(() => {
+        if (active) setStoresState("loading");
+        return authedFetch("/api/uber-eats/stores");
+      })
+      .then(async (res) => {
+        const data = (await res.json().catch(() => ({}))) as { stores?: { id: string; name: string; address: string }[] };
+        if (!active) return;
+        if (!res.ok) throw new Error(`Stores request failed (${res.status})`);
+        const stores = data.stores ?? [];
+        setUberStores(stores);
+        setStoresState("idle");
+        // Nothing sensible to choose between: pick the only store, drop a stale saved one.
+        setUberStoreId((cur) => (stores.some((s) => s.id === cur) ? cur : stores.length === 1 ? stores[0].id : ""));
+      })
+      .catch((err) => {
+        console.error("Failed to load Uber stores:", err);
+        if (active) setStoresState("error");
+      });
+    return () => {
+      active = false;
+    };
+  }, [showUber, storesReload]);
 
   async function loadItems() {
     setLoading(true);
@@ -340,6 +409,83 @@ export function MenuItemsPage() {
     }
   }
 
+  function toggleSelected(id: string) {
+    setSelectedIds((cur) => {
+      const next = new Set(cur);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function changeStoreId(value: string) {
+    const clean = value.trim();
+    setUberStoreId(clean);
+    localStorage.setItem("coral.uberStoreId", clean);
+  }
+
+  const syncedSelectedIds = items.filter((i) => selectedIds.has(i.id) && i.uberSyncedAt).map((i) => i.id);
+
+  function syncToUber(ids: string[]) {
+    return callUber(ids, "itemIds", t("menuItems.uberSyncConfirm", { count: String(ids.length) }));
+  }
+
+  function removeFromUber(ids: string[]) {
+    return callUber(ids, "removeIds", t("menuItems.uberRemoveConfirm", { count: String(ids.length) }));
+  }
+
+  async function callUber(ids: string[], field: "itemIds" | "removeIds", confirmText: string) {
+    if (ids.length === 0 || uberBusy) return;
+    if (!uberStoreId) {
+      setUberMessage({ ok: false, text: t("menuItems.uberStoreIdRequired") });
+      storeSelectRef.current?.focus();
+      return;
+    }
+    if (!confirm(confirmText)) return;
+    setUberBusy(true);
+    setUberMessage(null);
+    try {
+      const res = await authedFetch("/api/uber-eats/menu", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ storeId: uberStoreId, [field]: ids }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+        summary?: { items: number; withImages: number; matchedExisting?: number };
+        skipped?: { name: string; reason: string }[];
+      };
+      if (!res.ok || !data.ok) {
+        setUberMessage({
+          ok: false,
+          text: t("menuItems.uberSyncFailed", { status: String(res.status), detail: data.error ?? "" }),
+        });
+        return;
+      }
+      const skipped = data.skipped ?? [];
+      setUberMessage({
+        ok: true,
+        text:
+          (field === "removeIds" ? t("menuItems.uberRemoveDone", { count: String(ids.length) }) + " " : "") +
+          t("menuItems.uberSyncDone", { count: String(data.summary?.items ?? 0), images: String(data.summary?.withImages ?? 0) }) +
+          (data.summary?.matchedExisting
+            ? " " + t("menuItems.uberSyncMatched", { count: String(data.summary.matchedExisting) })
+            : "") +
+          (skipped.length
+            ? " " + t("menuItems.uberSyncSkipped", { list: skipped.map((s) => `${s.name} (${s.reason})`).join("; ") })
+            : ""),
+      });
+      setSelectedIds(new Set());
+      await loadItems();
+    } catch (err) {
+      console.error("Uber menu sync failed:", err);
+      setUberMessage({ ok: false, text: t("menuItems.uberSyncFailed", { status: "-", detail: "" }) });
+    } finally {
+      setUberBusy(false);
+    }
+  }
+
   async function handleDelete(item: MenuItem) {
     if (!confirm(t("menuItems.confirmDelete"))) return;
     try {
@@ -352,6 +498,31 @@ export function MenuItemsPage() {
 
   const columns: ColumnDef<MenuItem, unknown>[] = useMemo(() => {
     const cols: ColumnDef<MenuItem, unknown>[] = [
+      ...(showUber
+        ? [
+            {
+              id: "uberSelect",
+              size: 44,
+              enableSorting: false,
+              header: () => (
+                <input
+                  type="checkbox"
+                  aria-label={t("menuItems.uberSelectAll")}
+                  checked={items.length > 0 && selectedIds.size === items.length}
+                  onChange={(e) => setSelectedIds(e.target.checked ? new Set(items.map((i) => i.id)) : new Set())}
+                />
+              ),
+              cell: ({ row }) => (
+                <input
+                  type="checkbox"
+                  aria-label={`${t("menuItems.uberSelectItem")}: ${row.original.name}`}
+                  checked={selectedIds.has(row.original.id)}
+                  onChange={() => toggleSelected(row.original.id)}
+                />
+              ),
+            } as ColumnDef<MenuItem, unknown>,
+          ]
+        : []),
       {
         accessorKey: "imageKey",
         header: t("menuItems.image"),
@@ -376,6 +547,14 @@ export function MenuItemsPage() {
         cell: ({ getValue }) => <span className="font-medium">{getValue() as string}</span>,
       },
       {
+        id: "platformPrice",
+        header: t("menuItems.platformPrice"),
+        size: 140,
+        // Items saved before the field existed have none stored; show what a sync would send.
+        accessorFn: (row) => row.platformPrice || formatPlatformPrice(row.price),
+        cell: ({ getValue }) => <span className="font-medium">{getValue() as string}</span>,
+      },
+      {
         accessorKey: "available",
         header: t("menuItems.available"),
         size: 120,
@@ -394,6 +573,38 @@ export function MenuItemsPage() {
           return <Badge variant="default">{t("menuItems.availableYes")}</Badge>;
         },
       },
+      ...(showUber
+        ? [
+            {
+              id: "uberStatus",
+              header: "Uber",
+              size: 130,
+              // Text value so the column can be sorted and filtered ("Out of date").
+              accessorFn: (row) => t(`menuItems.uberStatus_${uberStatusOf(row, ingredients)}`),
+              cell: ({ row }) => {
+                const status = uberStatusOf(row.original, ingredients);
+                const date = row.original.uberSyncedAt ? new Date(row.original.uberSyncedAt).toLocaleString() : "";
+                if (status === "none") {
+                  return <Badge variant="outline">{t("menuItems.uberStatus_none")}</Badge>;
+                }
+                if (status === "current") {
+                  return (
+                    <Badge variant="default" title={t("menuItems.uberStatusHint_current", { date })}>
+                      <CircleCheck data-icon="inline-start" />
+                      {t("menuItems.uberStatus_current")}
+                    </Badge>
+                  );
+                }
+                return (
+                  <Badge variant="destructive" title={t("menuItems.uberStatusHint_stale", { date })}>
+                    <TriangleAlert data-icon="inline-start" />
+                    {t("menuItems.uberStatus_stale")}
+                  </Badge>
+                );
+              },
+            } as ColumnDef<MenuItem, unknown>,
+          ]
+        : []),
       {
         id: "ingredients",
         header: t("menuItems.ingredients"),
@@ -413,9 +624,33 @@ export function MenuItemsPage() {
       cols.push({
         id: "actions",
         header: "",
-        size: 150,
+        size: showUber ? 190 : 150,
         cell: ({ row }) => (
           <div className="flex gap-1">
+            {showUber && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                disabled={uberBusy}
+                onClick={() => syncToUber([row.original.id])}
+                aria-label={`${t("menuItems.uberSyncItem")}: ${row.original.name}`}
+                title={t("menuItems.uberSyncItem")}
+              >
+                <UploadCloud />
+              </Button>
+            )}
+            {showUber && row.original.uberSyncedAt && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                disabled={uberBusy}
+                onClick={() => removeFromUber([row.original.id])}
+                aria-label={`${t("menuItems.uberRemoveItem")}: ${row.original.name}`}
+                title={t("menuItems.uberRemoveItem")}
+              >
+                <CloudOff />
+              </Button>
+            )}
             <Button
               variant="ghost"
               size="icon-sm"
@@ -446,7 +681,8 @@ export function MenuItemsPage() {
     }
 
     return cols;
-  }, [t, isAdmin, ingredients]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [t, isAdmin, ingredients, items, showUber, selectedIds, uberBusy, uberStoreId]);
 
   return (
     <div className="page">
@@ -464,6 +700,53 @@ export function MenuItemsPage() {
             <FileText data-icon="inline-start" />
             {t("menuItems.printFlyer")}
           </Button>
+          {showUber && (
+            <>
+              <select
+                ref={storeSelectRef}
+                aria-label={t("menuItems.uberStore")}
+                className="h-8 w-64 rounded-lg border border-input bg-white px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                value={uberStores.some((s) => s.id === uberStoreId) ? uberStoreId : ""}
+                onChange={(e) => changeStoreId(e.target.value)}
+                disabled={storesState === "loading"}
+              >
+                <option value="">
+                  {storesState === "loading"
+                    ? t("menuItems.uberStoresLoading")
+                    : uberStores.length === 0
+                      ? t("menuItems.uberNoStores")
+                      : t("menuItems.uberChooseStore")}
+                </option>
+                {uberStores.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                    {s.address ? ` - ${s.address}` : ""}
+                  </option>
+                ))}
+              </select>
+              {storesState === "error" && (
+                <Button variant="outline" onClick={() => setStoresReload((n) => n + 1)}>
+                  {t("menuItems.uberStoresRetry")}
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                disabled={uberBusy || selectedIds.size === 0}
+                onClick={() => syncToUber([...selectedIds])}
+              >
+                <UploadCloud data-icon="inline-start" />
+                {t("menuItems.uberSyncSelected")} ({selectedIds.size})
+              </Button>
+              <Button
+                variant="outline"
+                disabled={uberBusy || syncedSelectedIds.length === 0}
+                onClick={() => removeFromUber(syncedSelectedIds)}
+              >
+                <CloudOff data-icon="inline-start" />
+                {t("menuItems.uberRemoveSelected")} ({syncedSelectedIds.length})
+              </Button>
+            </>
+          )}
           {isAdmin && (
             <Button onClick={openCreate}>
               <Plus data-icon="inline-start" />
@@ -471,6 +754,14 @@ export function MenuItemsPage() {
             </Button>
           )}
         </div>
+      </div>
+
+      <div aria-live="polite">
+        {uberMessage && (
+          <p role={uberMessage.ok ? "status" : "alert"} className={`mb-2 text-sm ${uberMessage.ok ? "" : "text-red-600"}`}>
+            {uberMessage.text}
+          </p>
+        )}
       </div>
 
       <CoralDataGrid
@@ -517,10 +808,20 @@ export function MenuItemsPage() {
               <Label>{t("menuItems.description")}</Label>
               <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder={t("menuItems.descriptionPlaceholder")} />
             </div>
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
               <div className="grid gap-2">
                 <Label>{t("menuItems.price")}</Label>
                 <CurrencyInput value={form.price} onChange={(v) => setForm({ ...form, price: v })} placeholder="0" />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="platform-price">{t("menuItems.platformPrice")}</Label>
+                <Input
+                  id="platform-price"
+                  readOnly
+                  value={formatPlatformPrice(form.price)}
+                  aria-describedby="platform-price-hint"
+                  className="bg-[var(--surface-muted)]"
+                />
               </div>
               <div className="grid gap-2">
                 <Label>{t("menuItems.order")}</Label>
@@ -542,6 +843,10 @@ export function MenuItemsPage() {
                   <option value="no">{t("menuItems.availableNo")}</option>
                 </select>
               </div>
+              {/* Own full-width row so it can't change the height of the field cells above. */}
+              <p id="platform-price-hint" className="col-span-full -mt-2 text-xs text-[var(--text-muted)]">
+                {t("menuItems.platformPriceHint", { pct: String(PLATFORM_MARKUP_PERCENT) })}
+              </p>
             </div>
             <div className="grid gap-2">
               <Label>{t("menuItems.ingredients")}</Label>

@@ -27,6 +27,9 @@ locals {
   api_routes_uat = merge(local.api_routes, {
     # UAT-only Uber helper. The handler also checks for an Administrator/Overlord group.
     "POST /api/uber-eats/test" = true
+    # Publishes the UAT menu to the Uber sandbox store (admin group checked in the handler).
+    "POST /api/uber-eats/menu" = true
+    "GET /api/uber-eats/stores" = true
   })
 }
 
@@ -84,6 +87,25 @@ resource "aws_iam_role_policy" "api_uat" {
         Effect   = "Allow"
         Action   = ["dynamodb:PutItem", "dynamodb:Scan"]
         Resource = aws_dynamodb_table.feedback.arn
+      },
+      {
+        Sid      = "MenuItemsTable"
+        Effect   = "Allow"
+        Action   = ["dynamodb:Scan", "dynamodb:UpdateItem"]
+        Resource = aws_dynamodb_table.menu_items.arn
+      },
+      {
+        Sid      = "MenuIngredientsTable"
+        Effect   = "Allow"
+        Action   = ["dynamodb:Scan"]
+        Resource = aws_dynamodb_table.menu_ingredients.arn
+      },
+      {
+        # Menu photos only: Uber downloads them through short-lived pre-signed URLs.
+        Sid      = "MenuPhotos"
+        Effect   = "Allow"
+        Action   = ["s3:GetObject"]
+        Resource = "${aws_s3_bucket.receipts.arn}/menu-items/*"
       },
     ]
   })

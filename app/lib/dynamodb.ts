@@ -2,6 +2,7 @@ import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { DynamoDBDocumentClient, ScanCommand, PutCommand, UpdateCommand, DeleteCommand, QueryCommand, GetCommand } from "@aws-sdk/lib-dynamodb";
 import { fetchAuthSession } from "aws-amplify/auth";
 import { TABLES } from "./tables";
+import { formatPlatformPrice } from "./pricing";
 
 const REGION = "us-east-1";
 
@@ -170,6 +171,12 @@ export type MenuItem = {
   ingredientIds?: string[];
   /** Option groups offered when ordering this item (configured on Menu Items). */
   modifierGroups?: ModifierGroup[];
+  /** Price on delivery platforms (Uber Eats): `price` + 30%. Derived on save; see lib/pricing.ts. */
+  platformPrice?: string;
+  /** ISO time of the last successful publish to Uber Eats; set by the menu sync API, not the form. */
+  uberSyncedAt?: string;
+  /** Fingerprint of what was sent at that publish (see uberFingerprint); compared to detect stale items. */
+  uberSyncHash?: string;
 };
 
 /** A set of choosable options on a menu item (size, toppings, sides...). */
@@ -181,7 +188,7 @@ export type ModifierGroup = {
   options: { id: string; name: string; price: number }[];
 };
 
-export type MenuItemInput = Omit<MenuItem, "id">;
+export type MenuItemInput = Omit<MenuItem, "id" | "uberSyncedAt" | "uberSyncHash">;
 
 export async function fetchMenuItems(): Promise<MenuItem[]> {
   const docClient = await getClient();
@@ -195,7 +202,7 @@ export async function fetchMenuItems(): Promise<MenuItem[]> {
 export async function createMenuItem(item: MenuItemInput): Promise<MenuItem> {
   const docClient = await getClient();
   const id = `menu-${Date.now()}`;
-  const record: MenuItem = { id, ...item };
+  const record: MenuItem = { id, ...item, platformPrice: formatPlatformPrice(item.price) };
 
   await docClient.send(
     new PutCommand({ TableName: TABLES.menuItems, Item: record })
@@ -211,7 +218,7 @@ export async function updateMenuItem(id: string, item: MenuItemInput): Promise<v
     new UpdateCommand({
       TableName: TABLES.menuItems,
       Key: { id },
-      UpdateExpression: "SET #n = :name, description = :description, category = :category, price = :price, available = :available, imageKey = :imageKey, notes = :notes, #o = :order, ingredientIds = :ingredientIds, modifierGroups = :modifierGroups",
+      UpdateExpression: "SET #n = :name, description = :description, category = :category, price = :price, available = :available, imageKey = :imageKey, notes = :notes, #o = :order, ingredientIds = :ingredientIds, modifierGroups = :modifierGroups, platformPrice = :platformPrice",
       ExpressionAttributeNames: { "#n": "name", "#o": "order" },
       ExpressionAttributeValues: {
         ":name": item.name,
@@ -224,6 +231,8 @@ export async function updateMenuItem(id: string, item: MenuItemInput): Promise<v
         ":order": item.order,
         ":ingredientIds": item.ingredientIds ?? [],
         ":modifierGroups": item.modifierGroups ?? [],
+        // Always derived from the store price so the two can never drift apart.
+        ":platformPrice": formatPlatformPrice(item.price),
       },
     })
   );

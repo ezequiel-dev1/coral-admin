@@ -6,7 +6,7 @@ import {
   PutCommand,
   ScanCommand,
 } from "@aws-sdk/lib-dynamodb";
-import type { Order, OrderStatus } from "./dynamodb";
+import type { MenuIngredient, MenuItem, Order, OrderStatus } from "./dynamodb";
 import { TABLES } from "./tables";
 
 /**
@@ -165,6 +165,66 @@ export async function markOrderPaid(input: MarkOrderPaidInput): Promise<void> {
       },
     })
   );
+}
+
+async function scanAll<T>(tableName: string): Promise<T[]> {
+  const client = getServerClient();
+  const out: T[] = [];
+  let startKey: Record<string, unknown> | undefined;
+  do {
+    const res = await client.send(new ScanCommand({ TableName: tableName, ExclusiveStartKey: startKey }));
+    out.push(...((res.Items ?? []) as T[]));
+    startKey = res.LastEvaluatedKey;
+  } while (startKey);
+  return out;
+}
+
+/** Menu items and ingredients, for publishing the menu to Uber Eats. */
+export async function fetchMenuForSync(): Promise<{ items: MenuItem[]; ingredients: MenuIngredient[] }> {
+  const [items, ingredients] = await Promise.all([
+    scanAll<MenuItem>(TABLES.menuItems),
+    scanAll<MenuIngredient>(TABLES.menuIngredients),
+  ]);
+  return { items, ingredients };
+}
+
+/** Remember which menu items are on Uber, and what was sent, so later syncs keep republishing them. */
+export async function markMenuItemsUberSynced(
+  synced: { id: string; hash: string }[],
+  at = new Date().toISOString()
+): Promise<void> {
+  const client = getServerClient();
+  for (const { id, hash } of synced) {
+    await client.send(
+      new UpdateCommand({
+        TableName: TABLES.menuItems,
+        Key: { id },
+        // Never create a stray record for an item deleted mid-sync.
+        ConditionExpression: "attribute_exists(id)",
+        UpdateExpression: "SET uberSyncedAt = :at, uberSyncHash = :hash",
+        ExpressionAttributeValues: { ":at": at, ":hash": hash },
+      })
+    ).catch((err) => {
+      if ((err as { name?: string })?.name !== "ConditionalCheckFailedException") throw err;
+    });
+  }
+}
+
+/** Forget that items are on Uber, so later syncs stop republishing them. */
+export async function clearMenuItemsUberSynced(ids: string[]): Promise<void> {
+  const client = getServerClient();
+  for (const id of ids) {
+    await client.send(
+      new UpdateCommand({
+        TableName: TABLES.menuItems,
+        Key: { id },
+        ConditionExpression: "attribute_exists(id)",
+        UpdateExpression: "REMOVE uberSyncedAt, uberSyncHash",
+      })
+    ).catch((err) => {
+      if ((err as { name?: string })?.name !== "ConditionalCheckFailedException") throw err;
+    });
+  }
 }
 
 /** All feedback ratings (rating + timestamp only; comments stay private). */

@@ -50,17 +50,26 @@ export function verifyUberSignature(rawBody: string, signature: string | null, c
   return supplied.length === expectedBytes.length && timingSafeEqual(supplied, expectedBytes);
 }
 
-async function accessToken(clientId: string, clientSecret: string, environment?: string | null): Promise<string> {
+const ORDER_SCOPE = "eats.order eats.store.orders.read";
+/** Scope required by the Upload Menu API. Requested separately so order handling never depends on it. */
+export const MENU_SCOPE = "eats.store";
+
+async function accessToken(
+  clientId: string,
+  clientSecret: string,
+  environment?: string | null,
+  scope: string = ORDER_SCOPE
+): Promise<string> {
   // Sandbox apps must authenticate on sandbox-login.uber.com; mixing domains fails auth.
   const sandbox = environment === "sandbox";
-  const cacheKey = sandbox ? "sandbox" : "production";
+  const cacheKey = `${sandbox ? "sandbox" : "production"}:${scope}`;
   const cached = tokens[cacheKey];
   if (cached && cached.expiresAt > Date.now() + 60_000) return cached.value;
   const body = new URLSearchParams({
     client_id: clientId,
     client_secret: clientSecret,
     grant_type: "client_credentials",
-    scope: "eats.order eats.store.orders.read",
+    scope,
   });
   const response = await fetch(sandbox ? SANDBOX_TOKEN_URL : TOKEN_URL, { method: "POST", body });
   if (!response.ok) throw new Error(`Uber OAuth failed (${response.status})`);
@@ -101,6 +110,91 @@ export async function acceptUberOrder(orderId: string, externalReferenceId: stri
     }),
   });
   if (!response.ok && response.status !== 409) throw new Error(`Uber accept order failed (${response.status})`);
+}
+
+export type UberStore = { id: string; name: string; address: string; status: string };
+
+/** Stores this app is authorized for (Uber's Get Stores API, all pages). */
+export async function listUberStores(environment: string | null): Promise<UberStore[]> {
+  const clientId = process.env.UBER_EATS_CLIENT_ID;
+  const clientSecret = process.env.UBER_EATS_CLIENT_SECRET;
+  if (!clientId || !clientSecret) throw new Error("Uber Eats credentials are not configured");
+  const token = await accessToken(clientId, clientSecret, environment, MENU_SCOPE);
+  const stores: UberStore[] = [];
+  let startKey = "";
+  // Hard page cap so a misbehaving cursor can never loop forever.
+  for (let page = 0; page < 20; page++) {
+    const url = `${apiBase(environment)}/v1/eats/stores?limit=50${startKey ? `&start_key=${encodeURIComponent(startKey)}` : ""}`;
+    const response = await fetch(url, { headers: { Authorization: `Bearer ${token}`, "Accept-Encoding": "gzip" } });
+    if (!response.ok) throw new Error(`Uber Get Stores failed (${response.status})`);
+    const data = (await response.json()) as {
+      next_key?: string | null;
+      stores?: Array<{ store_id?: string; name?: string; status?: string; location?: { address?: string; city?: string } }>;
+    };
+    for (const s of data.stores ?? []) {
+      if (!s.store_id) continue;
+      stores.push({
+        id: s.store_id,
+        name: s.name ?? s.store_id,
+        address: [s.location?.address, s.location?.city].filter(Boolean).join(", "),
+        status: s.status ?? "",
+      });
+    }
+    if (!data.next_key) break;
+    startKey = data.next_key;
+  }
+  return stores;
+}
+
+/**
+ * Top-level items currently on a store's menu (Uber's Get Menu API), used to match
+ * Coral items by name. Modifier options are excluded: they are also "items" in
+ * Uber's model but must never be matched to a dish. A store with no menu yet is
+ * an empty list; any other failure throws, so a sync never proceeds blind and
+ * creates duplicates.
+ */
+export async function getUberMenuItems(storeId: string, environment: string | null): Promise<{ id: string; title: string }[]> {
+  const clientId = process.env.UBER_EATS_CLIENT_ID;
+  const clientSecret = process.env.UBER_EATS_CLIENT_SECRET;
+  if (!clientId || !clientSecret) throw new Error("Uber Eats credentials are not configured");
+  const response = await fetch(`${apiBase(environment)}/v2/eats/stores/${encodeURIComponent(storeId)}/menus`, {
+    headers: {
+      Authorization: `Bearer ${await accessToken(clientId, clientSecret, environment, MENU_SCOPE)}`,
+      "Accept-Encoding": "gzip",
+    },
+  });
+  if (response.status === 404) return [];
+  if (!response.ok) throw new Error(`Uber Get Menu failed (${response.status})`);
+  const menu = (await response.json()) as {
+    items?: Array<{ id?: string; title?: { translations?: Record<string, string> } }>;
+    modifier_groups?: Array<{ modifier_options?: Array<{ id?: string }> }>;
+  };
+  const optionIds = new Set((menu.modifier_groups ?? []).flatMap((g) => (g.modifier_options ?? []).map((o) => o.id)));
+  return (menu.items ?? []).flatMap((item) => {
+    const translations = item.title?.translations ?? {};
+    const title = translations.en_us ?? Object.values(translations)[0];
+    return item.id && title && !optionIds.has(item.id) ? [{ id: item.id, title }] : [];
+  });
+}
+
+/** Replace the whole menu of a store (Uber's Upload Menu API). Items missing from the payload are removed. */
+export async function putUberMenu(storeId: string, menu: unknown, environment: string | null): Promise<void> {
+  const clientId = process.env.UBER_EATS_CLIENT_ID;
+  const clientSecret = process.env.UBER_EATS_CLIENT_SECRET;
+  if (!clientId || !clientSecret) throw new Error("Uber Eats credentials are not configured");
+  const response = await fetch(`${apiBase(environment)}/v2/eats/stores/${encodeURIComponent(storeId)}/menus`, {
+    method: "PUT",
+    headers: {
+      Authorization: `Bearer ${await accessToken(clientId, clientSecret, environment, MENU_SCOPE)}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(menu),
+  });
+  if (!response.ok) {
+    // Uber's error body names the offending entity; log it, but keep it out of the caller's response.
+    console.error("[uber-eats] upload menu rejected:", response.status, (await response.text()).slice(0, 2000));
+    throw new Error(`Uber upload menu failed (${response.status})`);
+  }
 }
 
 function modifiers(item: UberCartItem): OrderModifier[] {
