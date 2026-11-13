@@ -39,6 +39,7 @@ import {
   fetchMenuItems,
   fetchMenuIngredients,
   fetchOrders,
+  getUberEatsEnabled,
   isMenuItemAvailable,
   type MenuIngredient,
   type MenuItem,
@@ -134,6 +135,7 @@ export function OrdersPage() {
   const [ingredients, setIngredients] = useState<MenuIngredient[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [uberEatsEnabled, setUberEatsEnabled] = useState(true);
   const [error, setError] = useState("");
   const [filter, setFilter] = useState<Filter>("active");
   const [editing, setEditing] = useState<Order | null>(null);
@@ -164,6 +166,10 @@ export function OrdersPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    getUberEatsEnabled().then(setUberEatsEnabled).catch((err) => console.error("Failed to load Uber Eats setting:", err));
+  }, []);
 
   const visible = useMemo(() => {
     return orders.filter((o) => {
@@ -403,13 +409,13 @@ export function OrdersPage() {
       )}
 
       </div>
-      <UberOrdersBoard
+      {uberEatsEnabled && <UberOrdersBoard
         orders={orders}
         loading={loading}
         busy={busy}
         onOpen={openOrder}
         onTransition={transitionUberOrder}
-      />
+      />}
       </div>
 
       <Dialog open={showMerge} onOpenChange={setShowMerge}>

@@ -43,6 +43,7 @@ const ROUTES: Record<string, () => Promise<RouteModule>> = {
   "POST /api/checkout": () => import("../../app/api/checkout/route"),
   "POST /api/checkout/cancel": () =>
     import("../../app/api/checkout/cancel/route"),
+  "POST /api/invitations": () => import("../../app/api/invitations/route"),
   "GET /api/self-checkout": () => import("../../app/api/self-checkout/route"),
   "POST /api/self-checkout": () => import("../../app/api/self-checkout/route"),
   "POST /api/webhook": () => import("../../app/api/webhook/route"),

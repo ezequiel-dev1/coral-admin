@@ -561,6 +561,7 @@ export type Currency = "MXN" | "USD";
 export const META_ID_PREFIX = "meta-";
 
 const EXCHANGE_RATE_ID = `${META_ID_PREFIX}exchange-rate`;
+const UBER_EATS_ENABLED_ID = `${META_ID_PREFIX}uber-eats-enabled`;
 
 /**
  * Next sale code, e.g. "CRL-20261108-007": a per-day sequence kept by an atomic
@@ -607,6 +608,19 @@ export async function setExchangeRate(rate: number, updatedBy: string): Promise<
     new PutCommand({ TableName: TABLES.orders, Item: { id: EXCHANGE_RATE_ID, ...record } })
   );
   return record;
+}
+
+/** Whether the restaurant-facing Uber Eats dispatch board is enabled. Defaults to enabled. */
+export async function getUberEatsEnabled(): Promise<boolean> {
+  const docClient = await getClient();
+  const res = await docClient.send(new GetCommand({ TableName: TABLES.orders, Key: { id: UBER_EATS_ENABLED_ID } }));
+  return res.Item?.enabled !== false;
+}
+
+/** Shared across devices; does not affect existing Uber orders or their history. */
+export async function setUberEatsEnabled(enabled: boolean, updatedBy: string): Promise<void> {
+  const docClient = await getClient();
+  await docClient.send(new PutCommand({ TableName: TABLES.orders, Item: { id: UBER_EATS_ENABLED_ID, enabled, updatedAt: new Date().toISOString(), updatedBy } }));
 }
 
 export type OrderInput = Omit<Order, "id" | "createdAt">;
@@ -1063,9 +1077,13 @@ export async function splitCheckByItem(
   }
 
   const now = Date.now();
+  // Each split check is an independent order and therefore needs a distinct
+  // receipt/order number.
+  const saleCodes = await Promise.all(nonEmpty.map(() => nextSaleCode()));
   const created: Order[] = nonEmpty.map((b, i) => ({
     id: `${originalId}-s${i + 1}-${now}`,
     createdAt: new Date().toISOString(),
+    saleCode: saleCodes[i],
     tableLabel,
     server,
     items: b.items,

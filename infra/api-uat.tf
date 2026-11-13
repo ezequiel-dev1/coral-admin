@@ -83,6 +83,12 @@ resource "aws_iam_role_policy" "api_uat" {
         Resource = aws_dynamodb_table.orders.arn
       },
       {
+        Sid      = "InviteUsers"
+        Effect   = "Allow"
+        Action   = ["cognito-idp:AdminCreateUser", "cognito-idp:AdminAddUserToGroup"]
+        Resource = aws_cognito_user_pool.main.arn
+      },
+      {
         Sid      = "FeedbackTable"
         Effect   = "Allow"
         Action   = ["dynamodb:PutItem", "dynamodb:Scan"]
@@ -135,6 +141,7 @@ resource "aws_lambda_function" "api_uat" {
       STRIPE_WEBHOOK_SECRET_ID        = local.stripe_webhook_secret_name_uat
       UBER_EATS_CREDENTIALS_SECRET_ID = data.aws_secretsmanager_secret.uber_eats_credentials.name
       SITE_URL                        = "https://${var.uat_domain_name}"
+      COGNITO_USER_POOL_ID            = aws_cognito_user_pool.main.id
     }
   }
 

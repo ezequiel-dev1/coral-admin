@@ -7,12 +7,25 @@ resource "aws_cognito_user_pool" "main" {
   username_attributes      = ["email"]
   auto_verified_attributes = ["email"]
 
+  # Coral is an invite-only staff application. Cognito invitation passwords
+  # expire after one day.
+  admin_create_user_config {
+    allow_admin_create_user_only = true
+
+    invite_message_template {
+      email_subject = "You are invited to Coral"
+      email_message = "You have been invited to Coral. Open https://${var.domain_name}/ to create your password and access the system. Your username is {username} and your temporary password is {####}. This invitation expires in 24 hours."
+      sms_message   = "Coral invite: username {username}, temporary password {####}."
+    }
+  }
+
   password_policy {
-    minimum_length    = 8
-    require_lowercase = true
-    require_numbers   = true
-    require_symbols   = false
-    require_uppercase = true
+    minimum_length                   = 8
+    require_lowercase                = true
+    require_numbers                  = true
+    require_symbols                  = false
+    require_uppercase                = true
+    temporary_password_validity_days = 1
   }
 
   account_recovery_setting {
@@ -80,7 +93,7 @@ resource "aws_cognito_user_pool_client" "app" {
   callback_urls = [
     "https://${var.domain_name}/",
     "https://${var.uat_domain_name}/",
-    "http://localhost:3000/", # for local dev
+    "http://localhost:3000/",      # for local dev
     "https://192.168.86.25:3000/", # LAN dev (npm run dev:lan)
     "https://192.168.1.4:3000/",
     "https://localhost:3000/", # local dev over HTTPS (npm run dev:lan)

@@ -27,7 +27,7 @@ function authorized(req: NextRequest): boolean {
   const groups = groupsOf(req);
   // No token: only acceptable in local dev. In Lambda the gateway always supplies one.
   if (groups === null) return !process.env.AWS_LAMBDA_FUNCTION_NAME;
-  return groups.some((g) => g === "Administrator" || g === "Overlord");
+  return groups.includes("Overlord");
 }
 
 /**

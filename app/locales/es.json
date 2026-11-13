@@ -7,7 +7,7 @@
     "toDark": "Cambiar a modo oscuro",
     "toLight": "Cambiar a modo claro"
   },
-  "settings": { "title": "Configuración UAT", "pdfPrinter": "Impresora PDF", "pdfPrinterHint": "Abre cada ticket en una vista previa para imprimir desde tu propia impresora." },
+  "settings": { "title": "Configuración", "pdfPrinter": "Impresora PDF", "pdfPrinterHint": "Abre cada ticket en una vista previa para imprimir desde tu propia impresora.", "uberEats": "Uber Eats", "uberEatsHint": "Muestra el tablero de entregas de Uber Eats en la página de Órdenes.", "inviteTitle": "Invitar integrante", "inviteEmail": "correo@restaurante.com", "sendInvite": "Enviar invitación", "inviteSent": "Invitación enviada. Vence en 24 horas.", "inviteError": "No se pudo enviar la invitación." },
   "notifications": { "title": "Notificaciones", "empty": "No hay notificaciones nuevas", "uberNew": "Nueva orden de Uber Eats #{{id}}", "customerPaid": "El cliente pagó la orden #{{id}}" },
   "auth": {
     "loading": "Cargando...",

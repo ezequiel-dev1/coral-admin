@@ -7,7 +7,7 @@
     "toDark": "Switch to dark mode",
     "toLight": "Switch to light mode"
   },
-  "settings": { "title": "UAT settings", "pdfPrinter": "PDF Printer", "pdfPrinterHint": "Open each ticket in a browser print preview instead of using the thermal printer." },
+  "settings": { "title": "Settings", "pdfPrinter": "PDF Printer", "pdfPrinterHint": "Open each ticket in a browser print preview instead of using the thermal printer.", "uberEats": "Uber Eats", "uberEatsHint": "Show the Uber Eats delivery board on the Orders page.", "inviteTitle": "Invite team member", "inviteEmail": "email@restaurant.com", "sendInvite": "Send invitation", "inviteSent": "Invitation sent. It expires in 24 hours.", "inviteError": "Could not send invitation." },
   "notifications": { "title": "Notifications", "empty": "No new notifications", "uberNew": "New Uber Eats order #{{id}}", "customerPaid": "Customer paid order #{{id}}" },
   "auth": {
     "loading": "Loading...",

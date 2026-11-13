@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { fetchOrders, type Order } from "./lib/dynamodb";
+import { fetchOrders, getUberEatsEnabled, setUberEatsEnabled, type Order } from "./lib/dynamodb";
 import { useAuth } from "./auth/AuthProvider";
 import { useTranslation } from "./i18n/LanguageProvider";
 import { ThemeToggle } from "./ThemeToggle";
@@ -15,7 +15,9 @@ import { EmployeesPage } from "./pages/EmployeesPage";
 import { UberTestPage } from "./pages/UberTestPage";
 import { APP_ENV } from "./lib/tables";
 import { PDF_PRINTER_STORAGE_KEY } from "./lib/printAgent";
+import { authedFetch } from "./lib/apiFetch";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import {
   LayoutDashboard,
@@ -81,6 +83,10 @@ export function Dashboard() {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [uatSettingsOpen, setUatSettingsOpen] = useState(false);
   const [pdfPrinter, setPdfPrinter] = useState(false);
+  const [uberEatsEnabled, setUberEatsEnabledState] = useState(true);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteGroups, setInviteGroups] = useState<string[]>(["Mesero"]);
+  const [inviteMessage, setInviteMessage] = useState("");
   const [uberNotifications, setUberNotifications] = useState<Array<{ id: string; title: string; at: string; read: boolean; kind: "uber" | "paid" }>>([]);
   const knownUberOrderIds = useRef<Set<string> | null>(null);
   const knownSelfCheckoutPaidIds = useRef<Set<string> | null>(null);
@@ -118,9 +124,26 @@ export function Dashboard() {
     if (APP_ENV === "uat") setPdfPrinter(localStorage.getItem(PDF_PRINTER_STORAGE_KEY) === "true");
   }, []);
 
+  useEffect(() => {
+    getUberEatsEnabled().then(setUberEatsEnabledState).catch((error) => console.error("Failed to load Uber Eats setting:", error));
+  }, []);
+
   function togglePdfPrinter(enabled: boolean) {
     setPdfPrinter(enabled);
     localStorage.setItem(PDF_PRINTER_STORAGE_KEY, String(enabled));
+  }
+
+  async function toggleUberEats(enabled: boolean) {
+    setUberEatsEnabledState(enabled);
+    try { await setUberEatsEnabled(enabled, user?.name || user?.email || ""); }
+    catch (error) { console.error("Failed to update Uber Eats setting:", error); setUberEatsEnabledState(!enabled); }
+  }
+
+  async function sendInvite() {
+    setInviteMessage("");
+    const response = await authedFetch("/api/invitations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: inviteEmail, groups: inviteGroups }) });
+    if (response.ok) { setInviteEmail(""); setInviteMessage(t("settings.inviteSent")); }
+    else setInviteMessage(t("settings.inviteError"));
   }
 
   useEffect(() => {
@@ -157,6 +180,8 @@ export function Dashboard() {
   const isPrivileged = user?.groups?.some(
     (g) => g === "Administrator" || g === "Overlord"
   ) ?? false;
+  const isOverlord = user?.groups?.includes("Overlord") ?? false;
+  const isAdministrator = user?.groups?.includes("Administrator") ?? false;
 
   // Managers and Meseros get the day-to-day pages (Orders, Checkout); admin-only pages need Administrator/Overlord.
   const isStaff =
@@ -171,14 +196,14 @@ export function Dashboard() {
     { key: "Orders", staff: true, label: t("nav.orders"), icon: ClipboardList, public: false },
     { key: "Reservations", label: t("nav.reservations"), icon: CalendarDays, public: false },
     { key: "Checkout", staff: true, label: t("nav.checkout"), icon: ShoppingCart, public: false },
-    { key: "Menu Items", label: t("nav.menuItems"), icon: UtensilsCrossed, public: false },
-    { key: "Menu Ingredients", label: t("nav.menuIngredients"), icon: Carrot, public: false },
-    { key: "Employees", label: t("nav.employees"), icon: Users, public: false },
-    ...(showUberTest ? [{ key: "Uber Test", label: "Uber Test", icon: FlaskConical, public: false }] : []),
+    { key: "Menu Items", administrator: true, label: t("nav.menuItems"), icon: UtensilsCrossed, public: false },
+    { key: "Menu Ingredients", administrator: true, label: t("nav.menuIngredients"), icon: Carrot, public: false },
+    { key: "Employees", administrator: true, label: t("nav.employees"), icon: Users, public: false },
+    ...(showUberTest ? [{ key: "Uber Test", overlord: true, label: "Uber Test", icon: FlaskConical, public: false }] : []),
   ];
 
   const navItems = allNavItems.filter((item) =>
-    item.public || isPrivileged || (item.staff && isStaff)
+    item.public || (item.administrator && isAdministrator) || (item.overlord && isOverlord) || (!item.administrator && !item.overlord && (isPrivileged || (item.staff && isStaff)))
   );
 
   // If the requested tab isn't allowed for this user (e.g. default "Overview"), fall back to their first one (Orders for managers).
@@ -260,7 +285,7 @@ export function Dashboard() {
             </Button>
             {notificationsOpen && <div className="notifications-menu"><strong>{t("notifications.title")}</strong>{uberNotifications.length === 0 ? <p>{t("notifications.empty")}</p> : uberNotifications.map((note) => <button className={note.read ? "notification-read" : ""} key={`${note.kind}-${note.id}`} onClick={() => { setTab("Orders"); setUberNotifications((previous) => previous.map((item) => item.id === note.id && item.kind === note.kind ? { ...item, read: true } : item)); setNotificationsOpen(false); }}><span>{t(note.kind === "paid" ? "notifications.customerPaid" : "notifications.uberNew", { id: note.title })}</span><small>{note.at}</small></button>)}</div>}
             </div>
-            {APP_ENV === "uat" && <div className="notifications-wrap"><Button variant="ghost" size="icon" onClick={() => setUatSettingsOpen((open) => !open)} className="text-[#E48664]" aria-label="UAT settings"><Settings size={18} /></Button>{uatSettingsOpen && <div className="notifications-menu uat-settings"><strong>{t("settings.title")}</strong><label><span>{t("settings.pdfPrinter")}</span><input type="checkbox" checked={pdfPrinter} onChange={(event) => togglePdfPrinter(event.target.checked)} /></label><p>{t("settings.pdfPrinterHint")}</p></div>}</div>}
+            {isOverlord && <Button variant="ghost" size="icon" onClick={() => setUatSettingsOpen(true)} className="text-[#E48664]" aria-label="Settings"><Settings size={18} /></Button>}
             <Button variant="ghost" size="icon" onClick={logout} aria-label="Sign out" className="text-[#E48664] hover:text-[#E48664] hover:bg-[#E48664]/10">
               <LogOut size={18} />
             </Button>
@@ -272,11 +297,21 @@ export function Dashboard() {
           {isStaff && activeTab === "Orders" && <OrdersPage />}
           {isPrivileged && activeTab === "Reservations" && <ReservationsPage />}
           {isStaff && activeTab === "Checkout" && <CheckoutPage />}
-          {isPrivileged && activeTab === "Menu Items" && <MenuItemsPage />}
-          {isPrivileged && activeTab === "Menu Ingredients" && <MenuIngredientsPage />}
-          {isPrivileged && activeTab === "Employees" && <EmployeesPage />}
-          {isPrivileged && showUberTest && activeTab === "Uber Test" && <UberTestPage />}
+          {isAdministrator && activeTab === "Menu Items" && <MenuItemsPage />}
+          {isAdministrator && activeTab === "Menu Ingredients" && <MenuIngredientsPage />}
+          {isAdministrator && activeTab === "Employees" && <EmployeesPage />}
+          {isOverlord && showUberTest && activeTab === "Uber Test" && <UberTestPage />}
         </div>
+        <Dialog open={uatSettingsOpen} onOpenChange={setUatSettingsOpen}>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader><DialogTitle>{t("settings.title")}</DialogTitle></DialogHeader>
+            <div className="settings-dialog-list">
+              <label className="settings-row"><span>{t("settings.uberEats")}</span><span className="settings-toggle"><input type="checkbox" checked={uberEatsEnabled} onChange={(event) => toggleUberEats(event.target.checked)} /><i /></span></label>
+              {APP_ENV === "uat" && <label className="settings-row"><span>{t("settings.pdfPrinter")}</span><span className="settings-toggle"><input type="checkbox" checked={pdfPrinter} onChange={(event) => togglePdfPrinter(event.target.checked)} /><i /></span></label>}
+              <div className="invite-section"><strong>{t("settings.inviteTitle")}</strong><input value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} type="email" placeholder={t("settings.inviteEmail")} /><div className="invite-groups">{["Administrator", "Manager", "Mesero"].map((group) => <label key={group}><input type="checkbox" checked={inviteGroups.includes(group)} onChange={() => setInviteGroups((groups) => groups.includes(group) ? groups.filter((item) => item !== group) : [...groups, group])} />{group}</label>)}</div><Button size="sm" disabled={!inviteEmail || inviteGroups.length === 0} onClick={sendInvite}>{t("settings.sendInvite")}</Button>{inviteMessage && <small>{inviteMessage}</small>}</div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </section>
     </main>
   );

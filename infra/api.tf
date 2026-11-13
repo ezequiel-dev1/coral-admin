@@ -38,6 +38,7 @@ locals {
     "GET /api/card-present"       = true
     "POST /api/checkout"          = true
     "POST /api/checkout/cancel"   = true
+    "POST /api/invitations"       = true
     "GET /api/self-checkout"      = false
     "POST /api/self-checkout"     = false
   }
@@ -96,6 +97,12 @@ resource "aws_iam_role_policy" "api" {
         Resource = aws_dynamodb_table.production["orders"].arn
       },
       {
+        Sid      = "InviteUsers"
+        Effect   = "Allow"
+        Action   = ["cognito-idp:AdminCreateUser", "cognito-idp:AdminAddUserToGroup"]
+        Resource = aws_cognito_user_pool.main.arn
+      },
+      {
         Sid      = "UberUatOrdersTable"
         Effect   = "Allow"
         Action   = ["dynamodb:PutItem", "dynamodb:UpdateItem"]
@@ -135,6 +142,7 @@ resource "aws_lambda_function" "api" {
       STRIPE_WEBHOOK_SECRET_ID        = local.stripe_webhook_secret_name
       UBER_EATS_CREDENTIALS_SECRET_ID = data.aws_secretsmanager_secret.uber_eats_credentials.name
       SITE_URL                        = "https://${var.domain_name}"
+      COGNITO_USER_POOL_ID            = aws_cognito_user_pool.main.id
     }
   }
 
