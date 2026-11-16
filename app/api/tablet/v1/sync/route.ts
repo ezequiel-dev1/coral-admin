@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isAdminRequest } from "@/app/lib/adminAuth";
-import { createTabletOrder } from "@/app/lib/dynamodb-server";
+import { createTabletOrder, recordTabletPayment } from "@/app/lib/dynamodb-server";
 import type { Order, OrderLineItem } from "@/app/lib/dynamodb";
 
 type TabletLine = {
@@ -21,7 +21,8 @@ type TabletOrder = {
   lines: TabletLine[];
 };
 
-type SyncOperation = { id: string; type: "upsertOrder"; order: TabletOrder };
+type TabletPayment = { orderID: string; tip: number; paymentMethod: string; paidAt: string; amountTendered?: number | null; changeDue?: number | null };
+type SyncOperation = { id: string; type: "upsertOrder"; order: TabletOrder } | { id: string; type: "recordPayment"; payment: TabletPayment };
 
 const MAX_OPERATIONS = 25;
 const MAX_LINES = 100;
@@ -73,6 +74,19 @@ function toOrder(value: unknown): Order | null {
   };
 }
 
+function toPayment(value: unknown): { id: string; tip: number; paymentMethod: "cash" | "other"; paidAt: string; amountTendered?: number; changeDue?: number } | null {
+  if (!value || typeof value !== "object") return null;
+  const payment = value as Record<string, unknown>;
+  const id = text(payment.orderID, 36);
+  const tip = amount(payment.tip);
+  const paidAt = text(payment.paidAt, 40);
+  const method = payment.paymentMethod;
+  const tendered = payment.amountTendered === undefined || payment.amountTendered === null ? undefined : amount(payment.amountTendered);
+  const change = payment.changeDue === undefined || payment.changeDue === null ? undefined : amount(payment.changeDue);
+  if (!id || !uuid.test(id) || tip === null || !paidAt || Number.isNaN(Date.parse(paidAt)) || (method !== "cash" && method !== "other") || (payment.amountTendered !== undefined && payment.amountTendered !== null && tendered === null) || (payment.changeDue !== undefined && payment.changeDue !== null && change === null)) return null;
+  return { id, tip, paymentMethod: method, paidAt, ...(tendered === undefined ? {} : { amountTendered: tendered }), ...(change === undefined ? {} : { changeDue: change }) };
+}
+
 /** UAT-only offline-order synchronization endpoint for native tablet clients. */
 export async function POST(request: NextRequest) {
   if (process.env.NEXT_PUBLIC_APP_ENV !== "uat") return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -86,11 +100,17 @@ export async function POST(request: NextRequest) {
   const accepted: string[] = [];
   for (const raw of body.operations) {
     if (!raw || typeof raw !== "object") return NextResponse.json({ error: "Invalid operation" }, { status: 400 });
-    const operation = raw as Partial<SyncOperation>;
-    if (typeof operation.id !== "string" || !uuid.test(operation.id) || operation.type !== "upsertOrder") return NextResponse.json({ error: "Unsupported operation" }, { status: 400 });
-    const order = toOrder(operation.order);
-    if (!order) return NextResponse.json({ error: "Invalid order" }, { status: 400 });
-    await createTabletOrder(order);
+    const operation = raw as { id?: unknown; type?: unknown; order?: unknown; payment?: unknown };
+    if (typeof operation.id !== "string" || !uuid.test(operation.id)) return NextResponse.json({ error: "Unsupported operation" }, { status: 400 });
+    if (operation.type === "upsertOrder") {
+      const order = toOrder(operation.order);
+      if (!order) return NextResponse.json({ error: "Invalid order" }, { status: 400 });
+      await createTabletOrder(order);
+    } else if (operation.type === "recordPayment") {
+      const payment = toPayment(operation.payment);
+      if (!payment) return NextResponse.json({ error: "Invalid payment" }, { status: 400 });
+      await recordTabletPayment(payment);
+    } else return NextResponse.json({ error: "Unsupported operation" }, { status: 400 });
     accepted.push(operation.id);
   }
   return NextResponse.json({ accepted });

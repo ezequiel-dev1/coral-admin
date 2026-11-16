@@ -93,6 +93,27 @@ export async function createTabletOrder(order: Order): Promise<boolean> {
   }
 }
 
+/** Settle a tablet's offline-safe cash/other payment without touching a check
+ * that was already settled through another channel. */
+export async function recordTabletPayment(input: {
+  id: string; tip: number; paymentMethod: "cash" | "other"; paidAt: string;
+  amountTendered?: number; changeDue?: number;
+}): Promise<boolean> {
+  const existing = await getOrder(input.id);
+  if (!existing) throw new Error("Order not found");
+  if (existing.status === "paid") return false;
+  if (existing.status !== "open") throw new Error("Order cannot be paid");
+  const total = Math.round((existing.subtotal + existing.tax + input.tip) * 100) / 100;
+  await getServerClient().send(new UpdateCommand({
+    TableName: ORDERS_TABLE, Key: { id: input.id },
+    ConditionExpression: "#status = :open",
+    UpdateExpression: "SET #status = :paid, tip = :tip, #total = :total, paymentMethod = :method, paidAt = :paidAt, amountTendered = :tendered, change = :change",
+    ExpressionAttributeNames: { "#status": "status", "#total": "total" },
+    ExpressionAttributeValues: { ":open": "open", ":paid": "paid", ":tip": input.tip, ":total": total, ":method": input.paymentMethod, ":paidAt": input.paidAt, ":tendered": input.amountTendered ?? null, ":change": input.changeDue ?? null },
+  }));
+  return true;
+}
+
 export async function setUberWorkflowStatus(id: string, workflow: "preparing" | "ready" | "completed"): Promise<void> {
   const client = getServerClient();
   const ready = workflow === "ready" ? new Date().toISOString() : undefined;
