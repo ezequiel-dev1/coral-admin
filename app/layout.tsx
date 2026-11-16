@@ -23,6 +23,7 @@ export const metadata: Metadata = {
     icon: "/coral-icon.png",
     shortcut: "/coral-icon.png",
   },
+  manifest: "/manifest.webmanifest",
 };
 
 export default function RootLayout({

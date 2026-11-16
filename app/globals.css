@@ -4,6 +4,8 @@
 
 .offline-status{position:fixed;z-index:100;right:16px;bottom:16px;background:#8a6520;color:#fff;padding:10px 14px;border-radius:8px;font-size:12px;font-weight:700;box-shadow:0 4px 16px #0003}
 
+.offline-status{position:fixed;z-index:100;right:16px;bottom:16px;background:#8a6520;color:#fff;padding:10px 14px;border-radius:8px;font-size:12px;font-weight:700;box-shadow:0 4px 16px #0003}
+
 @custom-variant dark (&:is(.dark *));
 
 @font-face {

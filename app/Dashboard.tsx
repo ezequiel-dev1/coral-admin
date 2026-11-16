@@ -16,6 +16,7 @@ import { UberTestPage } from "./pages/UberTestPage";
 import { APP_ENV } from "./lib/tables";
 import { PDF_PRINTER_STORAGE_KEY } from "./lib/printAgent";
 import { authedFetch } from "./lib/apiFetch";
+import { OfflineSupport } from "./OfflineSupport";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
@@ -211,6 +212,7 @@ export function Dashboard() {
 
   return (
     <main className="app-shell">
+      <OfflineSupport />
       <aside className={`sidebar ${sidebarOpen ? "" : "sidebar-collapsed"}`}>
         <div className="brand">
           <img src="/coral-icon.png" alt="Coral Reef and Beef" className="brand-mark" />

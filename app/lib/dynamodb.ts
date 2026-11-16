@@ -3,6 +3,8 @@ import { DynamoDBDocumentClient, ScanCommand, PutCommand, UpdateCommand, DeleteC
 import { fetchAuthSession } from "aws-amplify/auth";
 import { TABLES } from "./tables";
 import { formatPlatformPrice } from "./pricing";
+import { cacheValue, cachedValue } from "./offlineCache";
+import { cacheOrders, cachedOrders } from "./offlineOrders";
 
 const REGION = "us-east-1";
 
@@ -191,12 +193,16 @@ export type ModifierGroup = {
 export type MenuItemInput = Omit<MenuItem, "id" | "uberSyncedAt" | "uberSyncHash">;
 
 export async function fetchMenuItems(): Promise<MenuItem[]> {
-  const docClient = await getClient();
-  const result = await docClient.send(
-    new ScanCommand({ TableName: TABLES.menuItems })
-  );
-  const items = (result.Items || []) as MenuItem[];
-  return items.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  try {
+    const result = await (await getClient()).send(new ScanCommand({ TableName: TABLES.menuItems }));
+    return cacheValue("menu-items", (result.Items || []) as MenuItem[]).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  } catch (error) {
+    const cached = cachedValue<MenuItem[]>("menu-items");
+    // Wi-Fi can stay connected to the router while its WAN is down, leaving
+    // navigator.onLine true. A usable local snapshot is still preferable.
+    if (cached) return cached.sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    throw error;
+  }
 }
 
 export async function createMenuItem(item: MenuItemInput): Promise<MenuItem> {
@@ -285,12 +291,14 @@ export type MenuIngredient = {
 export type MenuIngredientInput = Omit<MenuIngredient, "id">;
 
 export async function fetchMenuIngredients(): Promise<MenuIngredient[]> {
-  const docClient = await getClient();
-  const result = await docClient.send(
-    new ScanCommand({ TableName: TABLES.menuIngredients })
-  );
-  const items = (result.Items || []) as MenuIngredient[];
-  return items.sort((a, b) => a.name.localeCompare(b.name));
+  try {
+    const result = await (await getClient()).send(new ScanCommand({ TableName: TABLES.menuIngredients }));
+    return cacheValue("menu-ingredients", (result.Items || []) as MenuIngredient[]).sort((a, b) => a.name.localeCompare(b.name));
+  } catch (error) {
+    const cached = cachedValue<MenuIngredient[]>("menu-ingredients");
+    if (cached) return cached.sort((a, b) => a.name.localeCompare(b.name));
+    throw error;
+  }
 }
 
 export async function createMenuIngredient(item: MenuIngredientInput): Promise<MenuIngredient> {
@@ -626,15 +634,20 @@ export async function setUberEatsEnabled(enabled: boolean, updatedBy: string): P
 export type OrderInput = Omit<Order, "id" | "createdAt">;
 
 export async function fetchOrders(): Promise<Order[]> {
-  const docClient = await getClient();
-  const result = await docClient.send(
-    new ScanCommand({ TableName: TABLES.orders })
-  );
+  try {
+  const result = await (await getClient()).send(new ScanCommand({ TableName: TABLES.orders }));
   const items = ((result.Items || []) as Order[]).filter(
     // Cash reconciliations and metadata (counters, settings) share this table; they are not orders.
     (o) => !String(o.id).startsWith(CORTE_ID_PREFIX) && !String(o.id).startsWith(META_ID_PREFIX)
   );
-  return items.sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
+  const sorted = items.sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""));
+  cacheOrders(sorted);
+  return sorted;
+  } catch (error) {
+    const cached = cachedOrders();
+    if (cached.length) return cached;
+    throw error;
+  }
 }
 
 // --- Cash reconciliation (Corte de Caja) ---

@@ -13,6 +13,7 @@ import {
   type ServiceType,
   type VoidedLine,
 } from "./dynamodb";
+import { cacheOrder, isNetworkFailure, isOffline, queueOrder } from "./offlineOrders";
 
 // Menu prices already include IVA, so no tax is added on top (same as Checkout).
 export const TAX_RATE = 0;
@@ -117,22 +118,17 @@ function clean<T>(value: T): T {
 
 /** Create or fully replace an order that is still open/held (or new). */
 export async function saveOrder(input: Order): Promise<Order> {
-  // First save of an order assigns its sale code; later saves keep it.
-  const order = input.saleCode ? input : { ...input, saleCode: await nextSaleCode() };
-  const docClient = await getClient();
-  await docClient.send(
-    new PutCommand({
-      TableName: TABLES.orders,
-      Item: clean(order),
-      ConditionExpression: "attribute_not_exists(id) OR #s = :open OR #s = :held",
-      ExpressionAttributeNames: { "#s": "status" },
-      ExpressionAttributeValues: {
-        ":open": "open" as OrderStatus,
-        ":held": "held" as OrderStatus,
-      },
-    })
-  );
-  return order;
+  const order = input.saleCode ? input : isOffline() ? { ...input, saleCode: `OFFLINE-${input.id.slice(-6).toUpperCase()}` } : { ...input, saleCode: await nextSaleCode() };
+  if (isOffline()) { queueOrder(order); return order; }
+  try {
+    const docClient = await getClient();
+    await docClient.send(new PutCommand({ TableName: TABLES.orders, Item: clean(order), ConditionExpression: "attribute_not_exists(id) OR #s = :open OR #s = :held", ExpressionAttributeNames: { "#s": "status" }, ExpressionAttributeValues: { ":open": "open" as OrderStatus, ":held": "held" as OrderStatus } }));
+    cacheOrder(order);
+    return order;
+  } catch (error) {
+    if (isOffline() || isNetworkFailure(error)) { queueOrder(order); return order; }
+    throw error;
+  }
 }
 
 export function blankOrder(
