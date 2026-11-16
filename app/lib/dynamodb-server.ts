@@ -72,6 +72,27 @@ export async function createUberOrder(order: Order): Promise<boolean> {
   }
 }
 
+/**
+ * Create an order received from a restaurant tablet exactly once. The tablet
+ * supplies a UUID generated while offline, which is also the idempotency key:
+ * a retry sees the original item and never replaces it (in particular, never
+ * overwrites a payment made after the first synchronization).
+ */
+export async function createTabletOrder(order: Order): Promise<boolean> {
+  const client = getServerClient();
+  try {
+    await client.send(new PutCommand({
+      TableName: ORDERS_TABLE,
+      Item: JSON.parse(JSON.stringify(order)),
+      ConditionExpression: "attribute_not_exists(id)",
+    }));
+    return true;
+  } catch (err) {
+    if ((err as { name?: string })?.name === "ConditionalCheckFailedException") return false;
+    throw err;
+  }
+}
+
 export async function setUberWorkflowStatus(id: string, workflow: "preparing" | "ready" | "completed"): Promise<void> {
   const client = getServerClient();
   const ready = workflow === "ready" ? new Date().toISOString() : undefined;

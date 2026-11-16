@@ -56,6 +56,8 @@ const ROUTES: Record<string, () => Promise<RouteModule>> = {
   "GET /api/feedback": () => import("../../app/api/feedback/route"),
   "POST /api/feedback": () => import("../../app/api/feedback/route"),
   "GET /api/card-present": () => import("../../app/api/card-present/route"),
+  "GET /api/tablet/v1/menu": () => import("../../app/api/tablet/v1/menu/route"),
+  "POST /api/tablet/v1/sync": () => import("../../app/api/tablet/v1/sync/route"),
 };
 
 const secrets = new SecretsManagerClient({});

@@ -25,6 +25,8 @@ locals {
 
   # route key => requires a signed-in Cognito user?
   api_routes_uat = merge(local.api_routes, {
+    "GET /api/tablet/v1/menu" = true
+    "POST /api/tablet/v1/sync" = true
     # UAT-only Uber helper. The handler also checks for an Administrator/Overlord group.
     "POST /api/uber-eats/test" = true
     # Publishes the UAT menu to the Uber sandbox store (admin group checked in the handler).
