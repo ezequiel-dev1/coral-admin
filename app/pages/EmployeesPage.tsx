@@ -90,6 +90,7 @@ export function EmployeesPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [viewing, setViewing] = useState<Employee | null>(null);
+  const [mobileSearch, setMobileSearch] = useState("");
 
   useEffect(() => {
     load();
@@ -275,6 +276,10 @@ export function EmployeesPage() {
   );
 
   const set = <K extends keyof EmployeeInput>(k: K, v: EmployeeInput[K]) => setForm((f) => ({ ...f, [k]: v }));
+  const mobileEmployees = employees.filter((employee) => {
+    const query = mobileSearch.trim().toLocaleLowerCase();
+    return !query || [employee.fullName, employee.position, employee.phone].some((value) => value.toLocaleLowerCase().includes(query));
+  });
 
   return (
     <div className="page">
@@ -291,14 +296,74 @@ export function EmployeesPage() {
         </div>
       </div>
 
-      <CoralDataGrid
-        data={employees}
-        columns={columns}
-        loading={loading}
-        height={650}
-        defaultPageSize={100}
-        defaultSorting={[{ id: "fullName", desc: false }]}
-      />
+      <div className="employees-desktop-grid">
+        <CoralDataGrid
+          data={employees}
+          columns={columns}
+          loading={loading}
+          height={650}
+          defaultPageSize={100}
+          defaultSorting={[{ id: "fullName", desc: false }]}
+        />
+      </div>
+
+      <section className="employees-mobile-list" aria-label={t("employees.title")}>
+        <Input
+          type="search"
+          value={mobileSearch}
+          onChange={(event) => setMobileSearch(event.target.value)}
+          placeholder={t("employees.search")}
+          aria-label={t("employees.search")}
+        />
+        {loading ? (
+          <p className="employees-mobile-empty">{t("employees.loading")}</p>
+        ) : mobileEmployees.length === 0 ? (
+          <p className="employees-mobile-empty">{t("employees.noEmployees")}</p>
+        ) : (
+          <div className="employees-mobile-cards">
+            {mobileEmployees.map((employee) => {
+              const documentCount = employee.documents?.length ?? 0;
+              return (
+                <article key={employee.id} className="employee-mobile-card">
+                  <div className="employee-mobile-card-head">
+                    <div>
+                      <h2>{employee.fullName}</h2>
+                      <p>{employee.position || t("employees.noPosition")}</p>
+                    </div>
+                    <Badge variant={employee.active ? "secondary" : "outline"}>
+                      {employee.active ? t("employees.active") : t("employees.inactive")}
+                    </Badge>
+                  </div>
+                  <dl className="employee-mobile-details">
+                    <div><dt>{t("employees.weeklySalary")}</dt><dd>{formatMXN(employee.weeklySalary)}</dd></div>
+                    <div><dt>{t("employees.paymentMethod")}</dt><dd>{t(`employees.pay_${employee.paymentMethod}`)}</dd></div>
+                    <div><dt>{t("employees.phone")}</dt><dd>{employee.phone || "—"}</dd></div>
+                    <div><dt>{t("employees.documents")}</dt><dd>{documentCount}</dd></div>
+                  </dl>
+                  <div className="employee-mobile-actions">
+                    <Button disabled={!employee.active} onClick={() => setPayrollFor(employee)}>
+                      <Banknote data-icon="inline-start" />
+                      {t("employees.payroll")}
+                    </Button>
+                    <Button variant="outline" disabled={documentCount === 0} onClick={() => setViewing(employee)}>
+                      <Eye data-icon="inline-start" />
+                      {t("employees.viewDocuments")}
+                    </Button>
+                    <Button variant="outline" onClick={() => openEdit(employee)}>
+                      <Pencil data-icon="inline-start" />
+                      {t("employees.editItem")}
+                    </Button>
+                    <Button variant="outline" className="employee-mobile-delete" onClick={() => handleDelete(employee)}>
+                      <Trash2 data-icon="inline-start" />
+                      {t("employees.delete")}
+                    </Button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
 
       <EmployeePayrollDialog employee={payrollFor} onClose={() => setPayrollFor(null)} />
 

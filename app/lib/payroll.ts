@@ -34,6 +34,20 @@ export function addDays(dateStr: string, days: number): string {
   return toDateStr(d);
 }
 
+/** Number of working days in an inclusive date range. Sunday is the weekly rest day. */
+export function workingDaysInRange(start: string, end: string): number {
+  const first = parseDateStr(start);
+  const last = parseDateStr(end);
+  if (first > last) return 0;
+  let total = 0;
+  const cursor = new Date(first);
+  while (cursor <= last) {
+    if (cursor.getDay() !== 0) total += 1;
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return total;
+}
+
 export function isSaturday(date: Date = new Date()): boolean {
   return date.getDay() === 6;
 }

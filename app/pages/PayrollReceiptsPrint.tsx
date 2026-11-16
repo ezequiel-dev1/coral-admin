@@ -26,7 +26,8 @@ function DateBlanks({ dateStr }: { dateStr: string }) {
 
 /** One "Recibo de pago de salarios" page, laid out like the Coral template. */
 function ReceiptView({ r }: { r: PayrollReceipt }) {
-  const gross = round2(r.weeklySalary + r.otherPay);
+  const extraPay = r.extraPay ?? 0;
+  const gross = round2(r.weeklySalary + extraPay + r.otherPay);
   const method = r.paymentMethod;
   const amount = (n: number) => (
     <>
@@ -65,6 +66,10 @@ function ReceiptView({ r }: { r: PayrollReceipt }) {
         </thead>
         <tbody>
           <tr><td>Sueldo ordinario correspondiente al periodo</td><td>{amount(r.weeklySalary)}</td></tr>
+          <tr>
+            <td>Horas extra ({r.extraHours ?? 0} h × doble)</td>
+            <td>{amount(extraPay)}</td>
+          </tr>
           <tr>
             <td>Otros pagos (especificar): <span className="pr-u desc">{r.otherPay > 0 ? r.otherPayNote : "\u00A0"}</span></td>
             <td>{amount(r.otherPay)}</td>

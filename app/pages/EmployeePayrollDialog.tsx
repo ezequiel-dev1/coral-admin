@@ -22,18 +22,16 @@ import {
   formatLongDate,
   formatMXN,
   isSaturday,
-  parseDateStr,
   round2,
   saturdayOnOrAfter,
   toDateStr,
   weekStartOf,
+  workingDaysInRange,
 } from "../lib/payroll";
 import { PayrollReceiptsPrint } from "./PayrollReceiptsPrint";
 
-const DEFAULT_DAYS = 6;
-
 type Values = {
-  daysWorked: string;
+  extraHours: string;
   restDaysPaid: string;
   paymentMethod: ReceiptPayMethod;
   paymentMethodOther: string;
@@ -43,7 +41,7 @@ type Values = {
   deductionsNote: string;
 };
 
-const EMPTY: Values = { daysWorked: String(DEFAULT_DAYS), restDaysPaid: "0", paymentMethod: "cash", paymentMethodOther: "", otherPay: "", otherPayNote: "", deductions: "", deductionsNote: "" };
+const EMPTY: Values = { extraHours: "", restDaysPaid: "0", paymentMethod: "cash", paymentMethodOther: "", otherPay: "", otherPayNote: "", deductions: "", deductionsNote: "" };
 
 function amount(v: string): number {
   const n = parseFloat(v);
@@ -60,6 +58,7 @@ export function EmployeePayrollDialog({
 }) {
   const { t } = useTranslation();
   const [weekEnd, setWeekEnd] = useState(() => saturdayOnOrAfter());
+  const [weekStart, setWeekStart] = useState(() => weekStartOf(saturdayOnOrAfter()));
   const [values, setValues] = useState<Values>(EMPTY);
   const [salary, setSalary] = useState(0);
   const [loadedFor, setLoadedFor] = useState("");
@@ -69,17 +68,16 @@ export function EmployeePayrollDialog({
   const [message, setMessage] = useState("");
   const [printList, setPrintList] = useState<PayrollReceipt[] | null>(null);
 
-  const weekStart = weekStartOf(weekEnd);
   const employeeId = employee?.id;
   const employeeSalary = employee?.weeklySalary ?? 0;
   const employeeMethod: ReceiptPayMethod = employee?.paymentMethod ?? "cash";
-  const loadKey = employeeId ? `${employeeId}|${weekEnd}` : "";
+  const loadKey = employeeId ? `${employeeId}|${weekStart}|${weekEnd}` : "";
 
   // Load the saved receipt for this employee + week, or start from defaults.
   useEffect(() => {
     if (!employeeId) return;
     let cancelled = false;
-    getPayrollReceipt(employeeId, weekEnd)
+    getPayrollReceipt(employeeId, weekStart, weekEnd)
       .catch((err) => {
         console.error("Failed to load payroll receipt:", err);
         return null;
@@ -91,7 +89,7 @@ export function EmployeePayrollDialog({
         setValues(
           r
             ? {
-                daysWorked: String(r.daysWorked),
+                extraHours: r.extraHours ? String(r.extraHours) : "",
                 restDaysPaid: String(r.restDaysPaid ?? 0),
                 paymentMethod: r.paymentMethod,
                 paymentMethodOther: r.paymentMethodOther ?? "",
@@ -104,21 +102,25 @@ export function EmployeePayrollDialog({
         );
         setTouched(false);
         setMessage("");
-        setLoadedFor(`${employeeId}|${weekEnd}`);
+        setLoadedFor(`${employeeId}|${weekStart}|${weekEnd}`);
       });
     return () => {
       cancelled = true;
     };
-  }, [employeeId, weekEnd, employeeSalary, employeeMethod]);
+  }, [employeeId, weekStart, weekEnd, employeeSalary, employeeMethod]);
 
   const otherPay = amount(values.otherPay);
   const deductions = amount(values.deductions);
-  const net = Math.max(0, round2(salary + otherPay - deductions));
+  const extraHours = amount(values.extraHours);
+  const extraPay = round2((salary / 40) * 2 * extraHours);
+  const net = Math.max(0, round2(salary + extraPay + otherPay - deductions));
   const otherPayMissing = otherPay > 0 && values.otherPayNote.trim() === "";
   const deductionsMissing = deductions > 0 && values.deductionsNote.trim() === "";
   const ready = loadedFor === loadKey && !!employee;
   const methodMissing = values.paymentMethod === "other" && values.paymentMethodOther.trim() === "";
   const invalid = otherPayMissing || deductionsMissing || methodMissing;
+  const daysWorked = workingDaysInRange(weekStart, weekEnd);
+  const invalidRange = weekStart > weekEnd;
 
   const set = (patch: Partial<Values>) => setValues((v) => ({ ...v, ...patch }));
 
@@ -136,7 +138,9 @@ export function EmployeePayrollDialog({
       paymentMethod: values.paymentMethod,
       paymentMethodOther: values.paymentMethod === "other" ? values.paymentMethodOther.trim() : "",
       weeklySalary: salary,
-      daysWorked: Math.min(7, amount(values.daysWorked)),
+      extraHours,
+      extraPay,
+      daysWorked,
       restDaysPaid: Math.min(7, amount(values.restDaysPaid)),
       otherPay,
       otherPayNote: otherPay > 0 ? values.otherPayNote.trim() : "",
@@ -175,7 +179,7 @@ export function EmployeePayrollDialog({
     setPrintList([
       {
         ...buildInput(employee),
-        id: payrollReceiptId(employee.id, weekEnd),
+        id: payrollReceiptId(employee.id, weekStart, weekEnd),
         updatedAt: new Date().toISOString(),
       },
     ]);
@@ -215,18 +219,24 @@ export function EmployeePayrollDialog({
             )}
 
             <div className="flex items-end gap-2" style={{ flexDirection: "row" }}>
-              <Button variant="outline" size="icon" onClick={() => setWeekEnd(addDays(weekEnd, -7))} aria-label={t("employees.prevWeek")}>
+              <Button variant="outline" size="icon" onClick={() => { setWeekStart(addDays(weekStart, -7)); setWeekEnd(addDays(weekEnd, -7)); }} aria-label={t("employees.prevWeek")}>
                 <ChevronLeft />
               </Button>
-              <div className="grid flex-1 gap-1">
-                <Label>{t("employees.weekEnding")}</Label>
+              <div className="grid flex-1 grid-cols-2 gap-2">
+                <div className="grid gap-1">
+                <Label>{t("employees.payPeriodStart")}</Label>
                 <Input
                   type="date"
-                  value={weekEnd}
-                  onChange={(e) => e.target.value && setWeekEnd(saturdayOnOrAfter(parseDateStr(e.target.value)))}
+                  value={weekStart}
+                  onChange={(e) => e.target.value && setWeekStart(e.target.value)}
                 />
+                </div>
+                <div className="grid gap-1">
+                <Label>{t("employees.payPeriodEnd")}</Label>
+                <Input type="date" value={weekEnd} onChange={(e) => e.target.value && setWeekEnd(e.target.value)} />
+                </div>
               </div>
-              <Button variant="outline" size="icon" onClick={() => setWeekEnd(addDays(weekEnd, 7))} aria-label={t("employees.nextWeek")}>
+              <Button variant="outline" size="icon" onClick={() => { setWeekStart(addDays(weekStart, 7)); setWeekEnd(addDays(weekEnd, 7)); }} aria-label={t("employees.nextWeek")}>
                 <ChevronRight />
               </Button>
             </div>
@@ -234,6 +244,7 @@ export function EmployeePayrollDialog({
               {formatLongDate(weekStart)} – {formatLongDate(weekEnd)}
               {existing?.printedAt && <> · {t("employees.printed")}</>}
             </p>
+            {invalidRange && <p className="-mt-2 text-xs text-[#E48664]">{t("employees.invalidPayPeriod")}</p>}
 
             <div className="grid grid-cols-2 gap-4">
               <div className="grid gap-2">
@@ -252,12 +263,27 @@ export function EmployeePayrollDialog({
                 <Input
                   type="number"
                   min={0}
-                  max={7}
-                  step="0.5"
                   className={numClass}
-                  value={values.daysWorked}
-                  onChange={(e) => set({ daysWorked: e.target.value })}
+                  value={daysWorked}
+                  readOnly
                 />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label>{t("employees.extraHours")}</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  step="0.25"
+                  className={numClass}
+                  value={values.extraHours}
+                  onChange={(e) => set({ extraHours: e.target.value })}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label>{t("employees.extraPay")}</Label>
+                <Input className={numClass} value={formatMXN(extraPay)} readOnly />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -356,11 +382,11 @@ export function EmployeePayrollDialog({
 
           <DialogFooter>
             <Button variant="outline" onClick={() => handleOpenChange(false)}>{t("employees.cancel")}</Button>
-            <Button variant="outline" onClick={handleSave} disabled={busy || !ready}>
+            <Button variant="outline" onClick={handleSave} disabled={busy || !ready || invalidRange}>
               <Save data-icon="inline-start" />
               {t("employees.save")}
             </Button>
-            <Button onClick={handlePreview} disabled={busy || !ready}>
+            <Button onClick={handlePreview} disabled={busy || !ready || invalidRange}>
               <Printer data-icon="inline-start" />
               {t("employees.saveAndPrint")}
             </Button>
@@ -375,7 +401,7 @@ export function EmployeePayrollDialog({
           onConfirm={confirmFromPreview}
           onPrinted={async () => {
             try {
-              await markPayrollReceiptsPrinted(printList.map((r) => payrollReceiptId(r.employeeId, r.weekEnd)));
+              await markPayrollReceiptsPrinted(printList.map((r) => payrollReceiptId(r.employeeId, r.weekStart, r.weekEnd)));
               setExisting((e) => (e ? { ...e, printedAt: new Date().toISOString() } : e));
             } catch (err) {
               console.error("Failed to mark receipt printed:", err);

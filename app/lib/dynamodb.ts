@@ -1366,6 +1366,10 @@ export type PayrollReceipt = {
   /** Description when `paymentMethod` is "other". */
   paymentMethodOther?: string;
   weeklySalary: number;
+  /** Overtime hours paid at double the normal hourly rate. */
+  extraHours?: number;
+  /** Calculated overtime pay, retained so reprints remain accurate. */
+  extraPay?: number;
   daysWorked: number;
   /** "Días de descanso pagados". */
   restDaysPaid?: number;
@@ -1384,16 +1388,21 @@ export type PayrollReceipt = {
 
 export type PayrollReceiptInput = Omit<PayrollReceipt, "id" | "updatedAt" | "printedAt">;
 
-export function payrollReceiptId(employeeId: string, weekEnd: string): string {
-  return `pay-${weekEnd}-${employeeId}`;
+export function payrollReceiptId(employeeId: string, weekStart: string, weekEnd: string): string {
+  return `pay-${weekStart}-${weekEnd}-${employeeId}`;
 }
 
-export async function getPayrollReceipt(employeeId: string, weekEnd: string): Promise<PayrollReceipt | null> {
+export async function getPayrollReceipt(employeeId: string, weekStart: string, weekEnd: string): Promise<PayrollReceipt | null> {
   const docClient = await getClient();
   const result = await docClient.send(
-    new GetCommand({ TableName: TABLES.payrollReceipts, Key: { id: payrollReceiptId(employeeId, weekEnd) } })
+    new GetCommand({ TableName: TABLES.payrollReceipts, Key: { id: payrollReceiptId(employeeId, weekStart, weekEnd) } })
   );
-  return (result.Item as PayrollReceipt | undefined) ?? null;
+  if (result.Item) return result.Item as PayrollReceipt;
+  // Preserve access to receipts created before pay periods had a start date.
+  const legacy = await docClient.send(
+    new GetCommand({ TableName: TABLES.payrollReceipts, Key: { id: `pay-${weekEnd}-${employeeId}` } })
+  );
+  return (legacy.Item as PayrollReceipt | undefined) ?? null;
 }
 
 export async function fetchPayrollReceipts(weekEnd: string): Promise<PayrollReceipt[]> {
@@ -1416,7 +1425,7 @@ export async function savePayrollReceipt(
   const docClient = await getClient();
   const record: PayrollReceipt = {
     ...input,
-    id: payrollReceiptId(input.employeeId, input.weekEnd),
+    id: payrollReceiptId(input.employeeId, input.weekStart, input.weekEnd),
     updatedAt: new Date().toISOString(),
     ...(printedAt ? { printedAt } : {}),
   };
