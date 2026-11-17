@@ -59,7 +59,7 @@ function toOrder(value: unknown): Order | null {
     const quantity = line.quantity;
     const lineId = text(line.id, 60);
     const instructions = line.note === undefined || line.note === null ? undefined : text(line.note, 1_000);
-    if (!menuItemId || !name || unitPrice === null || !lineId || !Number.isInteger(quantity) || quantity < 1 || quantity > 100 || (line.note !== undefined && line.note !== null && instructions === null)) return null;
+    if (!menuItemId || !name || unitPrice === null || !lineId || typeof quantity !== "number" || !Number.isInteger(quantity) || quantity < 1 || quantity > 100 || (line.note !== undefined && line.note !== null && instructions === null)) return null;
     items.push({ menuItemId, name, unitPrice, quantity, lineId, basePrice: unitPrice, ...(instructions ? { instructions } : {}) });
     computedSubtotal += unitPrice * quantity;
   }
@@ -86,8 +86,8 @@ function toPayment(value: unknown): { id: string; tip: number; paymentMethod: "c
   const method = payment.paymentMethod;
   const tendered = payment.amountTendered === undefined || payment.amountTendered === null ? undefined : amount(payment.amountTendered);
   const change = payment.changeDue === undefined || payment.changeDue === null ? undefined : amount(payment.changeDue);
-  if (!id || !paidAt || Number.isNaN(Date.parse(paidAt)) || (method !== "cash" && method !== "other") || (payment.amountTendered !== undefined && payment.amountTendered !== null && tendered === null) || (payment.changeDue !== undefined && payment.changeDue !== null && change === null)) return null;
-  return { id, tip, paymentMethod: method, paidAt, ...(tendered === undefined ? {} : { amountTendered: tendered }), ...(change === undefined ? {} : { changeDue: change }) };
+  if (!id || tip === null || !paidAt || Number.isNaN(Date.parse(paidAt)) || (method !== "cash" && method !== "other") || (payment.amountTendered !== undefined && payment.amountTendered !== null && tendered === null) || (payment.changeDue !== undefined && payment.changeDue !== null && change === null)) return null;
+  return { id, tip, paymentMethod: method, paidAt, ...(typeof tendered === "number" ? { amountTendered: tendered } : {}), ...(typeof change === "number" ? { changeDue: change } : {}) };
 }
 
 /** UAT-only offline-order synchronization endpoint for native tablet clients. */
