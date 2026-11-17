@@ -370,18 +370,20 @@
 
 /* Print: only the menu pages, one per sheet, no screen chrome */
 @media print{
-  body{background:#fff !important}
+  html,body{width:8.5in;height:auto;background:#fff !important}
   body *{visibility:hidden !important}
   .pm-overlay,.pm-overlay *{visibility:visible !important}
   .pm-overlay{position:static;background:#fff;overflow:visible;display:block}
   .pm-toolbar{display:none !important}
   .pm-scroll{display:block;padding:0;gap:0}
-  .pm-page{width:100%;min-height:auto;box-shadow:none;margin:0;break-after:page;page-break-after:always}
+  /* Keep the frame in normal document flow. The prior absolute frame gave its
+     parent no printable height, which is why Chromium generated blank pages. */
+  .pm-page{box-sizing:border-box;width:8.5in;min-height:11in;box-shadow:none;margin:0;break-after:page;page-break-after:always}
   .pm-page:last-child{break-after:auto;page-break-after:auto}
-  .pm-frame{position:absolute;inset:14px}
+  .pm-frame{box-sizing:border-box;position:relative;inset:auto;min-height:10.7in;margin:.15in}
   .pm-section,.pm-social,.pm-item{break-inside:avoid;page-break-inside:avoid}
 }
-@page{size:Letter portrait;margin:12mm}
+@page{size:Letter portrait;margin:0}
 
 /* ============================================================
    Printable Flyer (branded "COMBOS DEL MAR" layout)
