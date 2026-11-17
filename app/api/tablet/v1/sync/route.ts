@@ -69,7 +69,7 @@ function toOrder(value: unknown): Order | null {
     id, createdAt, tableLabel, server: "iPad", items, subtotal,
     tax: 0, tip: 0, total: subtotal, processingFee: 0, netAmount: 0,
     status: "open", paymentMethod: "cash", notes,
-    serviceType: tableLabel === "Takeout" ? "takeout" : "dine-in",
+    serviceType: tableLabel === "Takeout" || tableLabel === "Para llevar" ? "takeout" : "dine-in",
     source: "pos",
   };
 }
