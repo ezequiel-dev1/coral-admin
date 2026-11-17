@@ -19,6 +19,7 @@ type TabletOrder = {
   notes: string;
   subtotal: number;
   lines: TabletLine[];
+  customerName?: string | null;
 };
 
 type TabletPayment = { orderID: string; tip: number; paymentMethod: string; paidAt: string; amountTendered?: number | null; changeDue?: number | null };
@@ -43,8 +44,9 @@ function toOrder(value: unknown): Order | null {
   const createdAt = text(source.createdAt, 40);
   const tableLabel = text(source.tableName, 80);
   const notes = text(source.notes, 2_000);
+  const customerName = source.customerName === undefined || source.customerName === null ? undefined : text(source.customerName, 160);
   const subtotal = amount(source.subtotal);
-  if (!id || !uuid.test(id) || !createdAt || Number.isNaN(Date.parse(createdAt)) || !tableLabel || notes === null || subtotal === null || !Array.isArray(source.lines) || source.lines.length === 0 || source.lines.length > MAX_LINES) return null;
+  if (!id || !uuid.test(id) || !createdAt || Number.isNaN(Date.parse(createdAt)) || !tableLabel || notes === null || subtotal === null || (source.customerName !== undefined && source.customerName !== null && customerName === null) || !Array.isArray(source.lines) || source.lines.length === 0 || source.lines.length > MAX_LINES) return null;
 
   const items: OrderLineItem[] = [];
   let computedSubtotal = 0;
@@ -71,6 +73,7 @@ function toOrder(value: unknown): Order | null {
     status: "open", paymentMethod: "cash", notes,
     serviceType: tableLabel === "Takeout" || tableLabel === "Para llevar" ? "takeout" : "dine-in",
     source: "pos",
+    ...(customerName ? { customerName } : {}),
   };
 }
 
