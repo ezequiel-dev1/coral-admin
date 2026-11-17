@@ -38,6 +38,11 @@ output "cognito_client_id" {
   value       = aws_cognito_user_pool_client.app.id
 }
 
+output "native_pos_cognito_client_id" {
+  description = "Cognito App Client ID for Coral App on iPad"
+  value       = aws_cognito_user_pool_client.native_pos.id
+}
+
 output "cognito_domain" {
   description = "Cognito hosted UI domain"
   value       = "https://${aws_cognito_user_pool_domain.main.domain}.auth.${var.aws_region}.amazoncognito.com"

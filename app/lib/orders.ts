@@ -272,6 +272,9 @@ export async function splitOrder(order: Order, groups: OrderLineItem[][]): Promi
     0
   );
   const now = Date.now();
+  // A split creates distinct checks, so each needs its own customer-facing
+  // number rather than inheriting the original order's code.
+  const saleCodes = await Promise.all(nonEmpty.map(() => nextSaleCode()));
   const subs: Order[] = nonEmpty.map((items, i) => {
     const gross = items.reduce((a, l) => a + l.unitPrice * l.quantity, 0);
     const discountValue =
@@ -282,6 +285,7 @@ export async function splitOrder(order: Order, groups: OrderLineItem[][]): Promi
       ...order,
       id: `${order.id}-s${i + 1}-${now}`,
       createdAt: new Date(now + i).toISOString(),
+      saleCode: saleCodes[i],
       items,
       splitLabel: `Guest ${i + 1}`,
       splitFrom: order.id,

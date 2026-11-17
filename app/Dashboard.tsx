@@ -28,7 +28,6 @@ import {
   ShoppingCart,
   ClipboardList,
   CalendarDays,
-  Search,
   Bell,
   LogOut,
   PanelLeftClose,
@@ -277,9 +276,6 @@ export function Dashboard() {
               <option value="en-US">🇺🇸 {t("lang.english")}</option>
               <option value="es-MX">🇲🇽 {t("lang.spanish")}</option>
             </select>
-            <Button variant="ghost" size="icon" className="text-[#E48664]" aria-label="Search">
-              <Search size={18} />
-            </Button>
             <div className="notifications-wrap">
             <Button variant="ghost" size="icon" onClick={() => setNotificationsOpen((open) => !open)} className="text-[#E48664] relative" aria-label="Notifications">
               <Bell size={18} />

@@ -16,7 +16,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { CurrencyInput } from "@/components/ui/currency-input";
-import { Plus, Pencil, Trash2, ImageOff, ImagePlus, Printer, FileText, Carrot, ClipboardPaste, UploadCloud, CloudOff, CircleCheck, TriangleAlert } from "lucide-react";
+import { Plus, Pencil, Trash2, ImageOff, ImagePlus, Printer, FileText, Carrot, ClipboardPaste, UploadCloud, CloudOff, CircleCheck, TriangleAlert, Ellipsis } from "lucide-react";
 import { authedFetch } from "../lib/apiFetch";
 import { APP_ENV } from "../lib/tables";
 import { formatPlatformPrice, PLATFORM_MARKUP_PERCENT } from "../lib/pricing";
@@ -129,6 +129,9 @@ export function MenuItemsPage() {
   const [items, setItems] = useState<MenuItem[]>([]);
   const [ingredients, setIngredients] = useState<MenuIngredient[]>([]);
   const [loading, setLoading] = useState(true);
+  const [mobileSearch, setMobileSearch] = useState("");
+  const [mobileActionsItem, setMobileActionsItem] = useState<MenuItem | null>(null);
+  const [mobileToolbarOpen, setMobileToolbarOpen] = useState(false);
 
   // CRUD state
   const [showModal, setShowModal] = useState(false);
@@ -684,14 +687,19 @@ export function MenuItemsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [t, isAdmin, ingredients, items, showUber, selectedIds, uberBusy, uberStoreId]);
 
+  const mobileItems = items.filter((item) => {
+    const query = mobileSearch.trim().toLocaleLowerCase();
+    return !query || [item.name, item.category, item.description, item.price]
+      .some((value) => value.toLocaleLowerCase().includes(query));
+  });
+
   return (
     <div className="page">
-      <div className="page-header flex items-center justify-between">
+      <div className="page-header menu-items-page-header flex items-center justify-between">
         <div>
           <h1>{t("menuItems.title")}</h1>
-          <p className="page-subtitle">{t("menuItems.subtitle")} — {items.length} {t("menuItems.records").toLowerCase()}</p>
         </div>
-        <div className="flex flex-row items-center gap-2" style={{ flexDirection: "row" }}>
+        <div className="menu-items-desktop-toolbar flex flex-row items-center gap-2" style={{ flexDirection: "row" }}>
           <Button variant="outline" onClick={() => setShowPrintable(true)}>
             <Printer data-icon="inline-start" />
             {t("menuItems.printMenu")}
@@ -754,6 +762,16 @@ export function MenuItemsPage() {
             </Button>
           )}
         </div>
+        <div className="menu-items-mobile-toolbar">
+          <Button
+            variant="outline"
+            size="icon-sm"
+            onClick={() => setMobileToolbarOpen(true)}
+            aria-label={t("menuItems.actions")}
+          >
+            <Ellipsis />
+          </Button>
+        </div>
       </div>
 
       <div aria-live="polite">
@@ -764,14 +782,193 @@ export function MenuItemsPage() {
         )}
       </div>
 
-      <CoralDataGrid
-        data={items}
-        columns={columns}
-        loading={loading}
-        height={700}
-        defaultPageSize={100}
-        defaultSorting={[{ id: "order", desc: false }]}
-      />
+      <div className="menu-items-desktop-grid">
+        <CoralDataGrid
+          data={items}
+          columns={columns}
+          loading={loading}
+          height={700}
+          defaultPageSize={100}
+          defaultSorting={[{ id: "order", desc: false }]}
+        />
+      </div>
+
+      <section className="menu-items-mobile-list" aria-label={t("menuItems.title")}>
+        <Input
+          type="search"
+          value={mobileSearch}
+          onChange={(event) => setMobileSearch(event.target.value)}
+          placeholder={t("menuItems.search")}
+          aria-label={t("menuItems.search")}
+        />
+        {loading ? (
+          <p className="menu-items-mobile-empty">{t("menuItems.loading")}</p>
+        ) : mobileItems.length === 0 ? (
+          <p className="menu-items-mobile-empty">{t("menuItems.noItems")}</p>
+        ) : (
+          <div className="menu-items-mobile-cards">
+            {mobileItems.map((item) => {
+              const ingredientNames = (item.ingredientIds ?? [])
+                .map((id) => ingredients.find((ingredient) => ingredient.id === id)?.name)
+                .filter(Boolean);
+              const missingIngredients = getUnavailableIngredients(item, ingredients);
+              const status = uberStatusOf(item, ingredients);
+
+              return (
+                <article key={item.id} className="menu-item-mobile-card">
+                  <div className="menu-item-mobile-card-head">
+                    <MenuItemImage imageKey={item.imageKey || ""} onPreview={setFullImageUrl} />
+                    <div className="menu-item-mobile-title">
+                      <div>
+                        <h2>{item.name}</h2>
+                        <p>{item.category || "—"}</p>
+                      </div>
+                      <span className="menu-item-mobile-price">{item.price}</span>
+                    </div>
+                    {isAdmin && (
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => setMobileActionsItem(item)}
+                        aria-label={`${t("menuItems.actions")}: ${item.name}`}
+                      >
+                        <Ellipsis />
+                      </Button>
+                    )}
+                  </div>
+                  {item.description && <p className="menu-item-mobile-description">{item.description}</p>}
+                  <div className="menu-item-mobile-badges">
+                    {!item.available ? (
+                      <Badge variant="outline">{t("menuItems.availableNo")}</Badge>
+                    ) : missingIngredients.length > 0 ? (
+                      <Badge variant="outline" title={missingIngredients.map((ingredient) => ingredient.name).join(", ")}>
+                        {t("menuItems.missingIngredients")}
+                      </Badge>
+                    ) : (
+                      <Badge variant="default">{t("menuItems.availableYes")}</Badge>
+                    )}
+                    {showUber && <Badge variant={status === "current" ? "default" : "outline"}>{t(`menuItems.uberStatus_${status}`)}</Badge>}
+                  </div>
+                  <dl className="menu-item-mobile-details">
+                    <div><dt>{t("menuItems.platformPrice")}</dt><dd>{item.platformPrice || formatPlatformPrice(item.price)}</dd></div>
+                    <div><dt>{t("menuItems.order")}</dt><dd>{item.order ?? 0}</dd></div>
+                    <div className="menu-item-mobile-ingredients"><dt>{t("menuItems.ingredients")}</dt><dd>{ingredientNames.join(", ") || "—"}</dd></div>
+                  </dl>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      <Dialog open={!!mobileActionsItem} onOpenChange={(open) => !open && setMobileActionsItem(null)}>
+        <DialogContent className="menu-item-mobile-actions-dialog">
+          <DialogHeader>
+            <DialogTitle>{mobileActionsItem?.name}</DialogTitle>
+          </DialogHeader>
+          {mobileActionsItem && (
+            <div className="menu-item-mobile-action-list">
+              {showUber && (
+                <Button variant="outline" disabled={uberBusy} onClick={() => { setMobileActionsItem(null); syncToUber([mobileActionsItem.id]); }}>
+                  <UploadCloud data-icon="inline-start" />
+                  {t("menuItems.uberSyncSelected")}
+                </Button>
+              )}
+              {showUber && mobileActionsItem.uberSyncedAt && (
+                <Button variant="outline" disabled={uberBusy} onClick={() => { setMobileActionsItem(null); removeFromUber([mobileActionsItem.id]); }}>
+                  <CloudOff data-icon="inline-start" />
+                  {t("menuItems.uberRemoveItem")}
+                </Button>
+              )}
+              <Button variant="outline" onClick={() => { setMobileActionsItem(null); openPicture(mobileActionsItem); }}>
+                <ImagePlus data-icon="inline-start" />
+                {t("menuItems.changeImage")}
+              </Button>
+              <Button variant="outline" onClick={() => { setMobileActionsItem(null); openIngredients(mobileActionsItem); }}>
+                <Carrot data-icon="inline-start" />
+                {t("menuItems.assignIngredients")}
+              </Button>
+              <Button variant="outline" onClick={() => { setMobileActionsItem(null); openEdit(mobileActionsItem); }}>
+                <Pencil data-icon="inline-start" />
+                {t("menuItems.editItem")}
+              </Button>
+              <Button variant="outline" className="menu-item-mobile-delete" onClick={() => { setMobileActionsItem(null); handleDelete(mobileActionsItem); }}>
+                <Trash2 data-icon="inline-start" />
+                {t("menuItems.delete")}
+              </Button>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={mobileToolbarOpen} onOpenChange={setMobileToolbarOpen}>
+        <DialogContent className="menu-item-mobile-actions-dialog">
+          <DialogHeader>
+            <DialogTitle>{t("menuItems.actions")}</DialogTitle>
+          </DialogHeader>
+          <div className="menu-item-mobile-action-list">
+            <Button variant="outline" onClick={() => { setMobileToolbarOpen(false); setShowPrintable(true); }}>
+              <Printer data-icon="inline-start" />
+              {t("menuItems.printMenu")}
+            </Button>
+            <Button variant="outline" onClick={() => { setMobileToolbarOpen(false); setShowFlyer(true); }}>
+              <FileText data-icon="inline-start" />
+              {t("menuItems.printFlyer")}
+            </Button>
+            {showUber && (
+              <>
+                <select
+                  aria-label={t("menuItems.uberStore")}
+                  className="menu-items-mobile-store-select"
+                  value={uberStores.some((store) => store.id === uberStoreId) ? uberStoreId : ""}
+                  onChange={(event) => changeStoreId(event.target.value)}
+                  disabled={storesState === "loading"}
+                >
+                  <option value="">
+                    {storesState === "loading"
+                      ? t("menuItems.uberStoresLoading")
+                      : uberStores.length === 0
+                        ? t("menuItems.uberNoStores")
+                        : t("menuItems.uberChooseStore")}
+                  </option>
+                  {uberStores.map((store) => (
+                    <option key={store.id} value={store.id}>
+                      {store.name}{store.address ? ` - ${store.address}` : ""}
+                    </option>
+                  ))}
+                </select>
+                {storesState === "error" && (
+                  <Button variant="outline" onClick={() => setStoresReload((count) => count + 1)}>
+                    {t("menuItems.uberStoresRetry")}
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  disabled={uberBusy || selectedIds.size === 0}
+                  onClick={() => { setMobileToolbarOpen(false); syncToUber([...selectedIds]); }}
+                >
+                  <UploadCloud data-icon="inline-start" />
+                  {t("menuItems.uberSyncSelected")} ({selectedIds.size})
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={uberBusy || syncedSelectedIds.length === 0}
+                  onClick={() => { setMobileToolbarOpen(false); removeFromUber(syncedSelectedIds); }}
+                >
+                  <CloudOff data-icon="inline-start" />
+                  {t("menuItems.uberRemoveSelected")} ({syncedSelectedIds.length})
+                </Button>
+              </>
+            )}
+            {isAdmin && (
+              <Button onClick={() => { setMobileToolbarOpen(false); openCreate(); }}>
+                <Plus data-icon="inline-start" />
+                {t("menuItems.addItem")}
+              </Button>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Create / Edit Dialog */}
       <Dialog open={showModal} onOpenChange={setShowModal}>

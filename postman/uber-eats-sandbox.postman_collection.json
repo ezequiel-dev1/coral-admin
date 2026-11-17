@@ -1,0 +1,685 @@
+{
+  "info": {
+    "name": "Coral — Uber Eats Sandbox",
+    "description": "Uber Eats sandbox testing for Coral. Source: https://developer.uber.com/docs/eats/guides/sandbox . Includes every outbound operation shown in that guide plus detailed-reference alternatives for stores, menus and order lifecycle. Guide variants are explicitly labeled because their routes differ from detailed references. Enter credentials privately in Postman. Run token first; then select requests individually, not the whole collection: online/pause and accept/deny/cancel are alternative state transitions. Set store_id and order_id from Uber-provided test data. Sandbox support can depend on provisioning and scopes; a 404 on a guide variant does not establish that a canonical route works. Webhook receipt requires a running receiver and a test order placed through Uber; this collection does not manufacture Uber orders or send fake notifications to Coral.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "client_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "client_secret",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "order_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "store_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "item_id",
+      "value": "coral-test-item",
+      "type": "string"
+    },
+    {
+      "key": "scopes",
+      "value": "eats.order eats.store eats.store.orders.read eats.store.status.write",
+      "type": "string"
+    },
+    {
+      "key": "item_price_minor",
+      "value": "10000",
+      "type": "string"
+    },
+    {
+      "key": "paused_until",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "menu_payload",
+      "value": "{\n  \"menus\": [\n    {\n      \"id\": \"coral-test-menu\",\n      \"title\": {\n        \"translations\": {\n          \"es_mx\": \"Coral Sandbox\"\n        }\n      },\n      \"service_availability\": [\n        {\n          \"day_of_week\": \"monday\",\n          \"time_periods\": [\n            {\n              \"start_time\": \"00:00\",\n              \"end_time\": \"23:59\"\n            }\n          ]\n        },\n        {\n          \"day_of_week\": \"tuesday\",\n          \"time_periods\": [\n            {\n              \"start_time\": \"00:00\",\n              \"end_time\": \"23:59\"\n            }\n          ]\n        },\n        {\n          \"day_of_week\": \"wednesday\",\n          \"time_periods\": [\n            {\n              \"start_time\": \"00:00\",\n              \"end_time\": \"23:59\"\n            }\n          ]\n        },\n        {\n          \"day_of_week\": \"thursday\",\n          \"time_periods\": [\n            {\n              \"start_time\": \"00:00\",\n              \"end_time\": \"23:59\"\n            }\n          ]\n        },\n        {\n          \"day_of_week\": \"friday\",\n          \"time_periods\": [\n            {\n              \"start_time\": \"00:00\",\n              \"end_time\": \"23:59\"\n            }\n          ]\n        },\n        {\n          \"day_of_week\": \"saturday\",\n          \"time_periods\": [\n            {\n              \"start_time\": \"00:00\",\n              \"end_time\": \"23:59\"\n            }\n          ]\n        },\n        {\n          \"day_of_week\": \"sunday\",\n          \"time_periods\": [\n            {\n              \"start_time\": \"00:00\",\n              \"end_time\": \"23:59\"\n            }\n          ]\n        }\n      ],\n      \"category_ids\": [\n        \"coral-test-category\"\n      ]\n    }\n  ],\n  \"categories\": [\n    {\n      \"id\": \"coral-test-category\",\n      \"title\": {\n        \"translations\": {\n          \"es_mx\": \"Pruebas\"\n        }\n      },\n      \"entities\": [\n        {\n          \"id\": \"coral-test-item\",\n          \"type\": \"ITEM\"\n        }\n      ]\n    }\n  ],\n  \"items\": [\n    {\n      \"id\": \"coral-test-item\",\n      \"title\": {\n        \"translations\": {\n          \"es_mx\": \"Platillo de prueba\"\n        }\n      },\n      \"price_info\": {\n        \"price\": 10000\n      },\n      \"quantity_info\": {\n        \"quantity\": {\n          \"max_permitted\": 10\n        }\n      },\n      \"tax_info\": {\n        \"tax_rate\": 0\n      }\n    }\n  ],\n  \"modifier_groups\": []\n}",
+      "type": "string"
+    },
+    {
+      "key": "store_status_payload",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "store_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "item_id",
+      "value": "coral-test-item",
+      "type": "string"
+    },
+    {
+      "key": "scopes",
+      "value": "eats.order eats.store eats.store.orders.read eats.store.status.write",
+      "type": "string"
+    },
+    {
+      "key": "item_price_minor",
+      "value": "10000",
+      "type": "string"
+    },
+    {
+      "key": "paused_until",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "menu_payload",
+      "value": "{\n  \"menus\": [\n    {\n      \"id\": \"coral-test-menu\",\n      \"title\": {\n        \"translations\": {\n          \"es_mx\": \"Coral Sandbox\"\n        }\n      },\n      \"service_availability\": [\n        {\n          \"day_of_week\": \"monday\",\n          \"time_periods\": [\n            {\n              \"start_time\": \"00:00\",\n              \"end_time\": \"23:59\"\n            }\n          ]\n        },\n        {\n          \"day_of_week\": \"tuesday\",\n          \"time_periods\": [\n            {\n              \"start_time\": \"00:00\",\n              \"end_time\": \"23:59\"\n            }\n          ]\n        },\n        {\n          \"day_of_week\": \"wednesday\",\n          \"time_periods\": [\n            {\n              \"start_time\": \"00:00\",\n              \"end_time\": \"23:59\"\n            }\n          ]\n        },\n        {\n          \"day_of_week\": \"thursday\",\n          \"time_periods\": [\n            {\n              \"start_time\": \"00:00\",\n              \"end_time\": \"23:59\"\n            }\n          ]\n        },\n        {\n          \"day_of_week\": \"friday\",\n          \"time_periods\": [\n            {\n              \"start_time\": \"00:00\",\n              \"end_time\": \"23:59\"\n            }\n          ]\n        },\n        {\n          \"day_of_week\": \"saturday\",\n          \"time_periods\": [\n            {\n              \"start_time\": \"00:00\",\n              \"end_time\": \"23:59\"\n            }\n          ]\n        },\n        {\n          \"day_of_week\": \"sunday\",\n          \"time_periods\": [\n            {\n              \"start_time\": \"00:00\",\n              \"end_time\": \"23:59\"\n            }\n          ]\n        }\n      ],\n      \"category_ids\": [\n        \"coral-test-category\"\n      ]\n    }\n  ],\n  \"categories\": [\n    {\n      \"id\": \"coral-test-category\",\n      \"title\": {\n        \"translations\": {\n          \"es_mx\": \"Pruebas\"\n        }\n      },\n      \"entities\": [\n        {\n          \"id\": \"coral-test-item\",\n          \"type\": \"ITEM\"\n        }\n      ]\n    }\n  ],\n  \"items\": [\n    {\n      \"id\": \"coral-test-item\",\n      \"title\": {\n        \"translations\": {\n          \"es_mx\": \"Platillo de prueba\"\n        }\n      },\n      \"price_info\": {\n        \"price\": 10000\n      },\n      \"quantity_info\": {\n        \"quantity\": {\n          \"max_permitted\": 10\n        }\n      },\n      \"tax_info\": {\n        \"tax_rate\": 0\n      }\n    }\n  ],\n  \"modifier_groups\": []\n}",
+      "type": "string"
+    },
+    {
+      "key": "store_status_payload",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Get Sandbox Token",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Token request succeeded', () => pm.response.to.have.status(200));",
+              "if (pm.response.code === 200) {",
+              "  const data = pm.response.json();",
+              "  pm.test('Response contains a bearer token', () => {",
+              "    pm.expect(data.access_token).to.be.a('string').and.not.empty;",
+              "    pm.expect(data.token_type.toLowerCase()).to.eql('bearer');",
+              "  });",
+              "  if (typeof data.access_token === 'string' && data.access_token) {",
+              "    pm.collectionVariables.set('access_token', data.access_token);",
+              "  }",
+              "} else {",
+              "  pm.collectionVariables.unset('access_token');",
+              "}"
+            ]
+          }
+        }
+      ],
+      "request": {
+        "auth": {
+          "type": "noauth"
+        },
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "formdata",
+          "formdata": [
+            {
+              "key": "client_id",
+              "value": "{{client_id}}",
+              "type": "text"
+            },
+            {
+              "key": "client_secret",
+              "value": "{{client_secret}}",
+              "type": "text"
+            },
+            {
+              "key": "grant_type",
+              "value": "client_credentials",
+              "type": "text"
+            },
+            {
+              "key": "scope",
+              "value": "{{scopes}}",
+              "type": "text"
+            }
+          ]
+        },
+        "url": "https://sandbox-login.uber.com/oauth/v2/token",
+        "description": "Enter client_id and client_secret in the collection variables using local values. A successful response automatically saves access_token for Get Order. Postman generates the multipart Content-Type boundary."
+      },
+      "response": []
+    },
+    {
+      "name": "Stores",
+      "item": [
+        {
+          "name": "List Authorized Stores — find store_id",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "https://test-api.uber.com/v1/eats/stores?limit=50",
+            "description": "Scope eats.store. Copy stores[].store_id to the collection store_id variable. If empty, ask Uber Integration Tech Support to provision a sandbox store for this application. Paginate with start_key using response next_key. Source: https://developer.uber.com/docs/eats/references/api/v1/get-eats-stores"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Successful response', () => pm.expect(pm.response.code).to.be.within(200, 299));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Get Store — sandbox guide",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "https://test-api.uber.com/v1/delivery/stores/{{store_id}}",
+            "description": "Requires a provisioned sandbox store. Source: https://developer.uber.com/docs/eats/guides/sandbox"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Successful response', () => pm.expect(pm.response.code).to.be.within(200, 299));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Get Integration Details",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "https://test-api.uber.com/v1/eats/stores/{{store_id}}/pos_data",
+            "description": "Scope eats.store. Source: https://developer.uber.com/docs/eats/references/api/v1/get-eats-stores-storeid-posdata"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Successful response', () => pm.expect(pm.response.code).to.be.within(200, 299));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Set Store Online",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "https://test-api.uber.com/v1/eats/store/{{store_id}}/status",
+            "description": "Scope eats.store.status.write. Source: https://developer.uber.com/docs/eats/references/api/v1/post-eats-stores-storeid-status",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"ONLINE\",\n  \"reason\": \"Coral sandbox testing\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Successful response', () => pm.expect(pm.response.code).to.be.within(200, 299));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Pause Store",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "https://test-api.uber.com/v1/eats/store/{{store_id}}/status",
+            "description": "Set paused_until to a future ISO timestamp. Scope eats.store.status.write.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"PAUSED\",\n  \"paused_until\": \"{{paused_until}}\",\n  \"reason\": \"Coral sandbox testing\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Successful response', () => pm.expect(pm.response.code).to.be.within(200, 299));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Update Store Status — guide template",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "https://test-api.uber.com/v1/eats/stores/{{store_id}}/status",
+            "description": "The sandbox guide supplies no body schema. Set store_status_payload to a JSON payload confirmed by Uber for this endpoint. Prefer the reference-backed POST requests above.",
+            "body": {
+              "mode": "raw",
+              "raw": "{{store_status_payload}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Successful response', () => pm.expect(pm.response.code).to.be.within(200, 299));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Menus",
+      "item": [
+        {
+          "name": "Get Menu",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "https://test-api.uber.com/v2/eats/stores/{{store_id}}/menus",
+            "description": "Scope eats.store. See https://developer.uber.com/docs/eats/guides/menu-integration"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Successful response', () => pm.expect(pm.response.code).to.be.within(200, 299));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Upload Sample Menu — replaces existing menu",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "https://test-api.uber.com/v2/eats/stores/{{store_id}}/menus",
+            "description": "Replaces the entire sandbox store menu. Review menu_payload first. Source: https://developer.uber.com/docs/eats/references/api/v2/put-eats-stores-storeid-menu",
+            "body": {
+              "mode": "raw",
+              "raw": "{{menu_payload}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Successful response', () => pm.expect(pm.response.code).to.be.within(200, 299));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Update Item Price",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "https://test-api.uber.com/v2/eats/stores/{{store_id}}/menus/items/{{item_id}}",
+            "description": "Price is in minor currency units. Scope eats.store. Source: https://developer.uber.com/docs/eats/references/api/v2/post-eats-stores-storeid-menus-items-itemid",
+            "body": {
+              "mode": "raw",
+              "raw": "{\"price_info\":{\"price\":{{item_price_minor}}}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Successful response', () => pm.expect(pm.response.code).to.be.within(200, 299));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Upload Menu — sandbox guide variant",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "https://test-api.uber.com/v1/delivery/stores/{{store_id}}/menus",
+            "description": "Legacy/example route from sandbox guide; use the v2 PUT request if this route is unsupported.",
+            "body": {
+              "mode": "raw",
+              "raw": "{{menu_payload}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Successful response', () => pm.expect(pm.response.code).to.be.within(200, 299));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Orders — run lifecycle actions individually",
+      "item": [
+        {
+          "name": "2. Get Order",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Order request succeeded', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": "https://test-api.uber.com/v1/delivery/orders/{{order_id}}",
+            "description": "Set order_id to an existing sandbox order ID. Inherits bearer authentication from the collection using the token captured by Get Sandbox Token. Endpoint matches the supplied documentation."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Order v2",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "https://test-api.uber.com/v2/eats/order/{{order_id}}",
+            "description": "Scope eats.order or eats.store.orders.read. Source: https://developer.uber.com/docs/eats/references/api/v2/get-eats-order-orderid"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Successful response', () => pm.expect(pm.response.code).to.be.within(200, 299));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Accept Order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "https://test-api.uber.com/v1/eats/orders/{{order_id}}/accept_pos_order",
+            "description": "Requires nominated order-manager app. Source: https://developer.uber.com/docs/eats/references/api/v1/post-eats-order-orderid-acceptposorder",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Coral sandbox acceptance\",\n  \"external_reference_id\": \"coral-postman-test\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Successful response', () => pm.expect(pm.response.code).to.be.within(200, 299));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Accept Order — sandbox guide variant",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "https://test-api.uber.com/v1/delivery/orders/{{order_id}}/accept_pos_order",
+            "description": "Exact sandbox guide example. Scope eats.order."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Successful response', () => pm.expect(pm.response.code).to.be.within(200, 299));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Deny Order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "https://test-api.uber.com/v1/eats/orders/{{order_id}}/deny_pos_order",
+            "description": "Use a different pending test order from acceptance. Requires order-manager app. Source: https://developer.uber.com/docs/eats/references/api/v1/post-eats-order-orderid-denyposorder",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": {\n    \"explanation\": \"Coral sandbox denial test\",\n    \"code\": \"OTHER\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Successful response', () => pm.expect(pm.response.code).to.be.within(200, 299));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        },
+        {
+          "name": "Cancel Order",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "https://test-api.uber.com/v1/eats/orders/{{order_id}}/cancel",
+            "description": "Requires an order that is not terminal. Source: https://developer.uber.com/docs/eats/references/api/v1/post-eats-order-orderid-cancel",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"OTHER\",\n  \"details\": \"Coral sandbox cancellation test\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Successful response', () => pm.expect(pm.response.code).to.be.within(200, 299));"
+                ]
+              }
+            }
+          ],
+          "response": []
+        }
+      ]
+    }
+  ]
+}

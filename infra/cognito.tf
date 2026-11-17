@@ -130,3 +130,32 @@ resource "aws_cognito_user_pool_client" "app" {
     "ALLOW_USER_SRP_AUTH",
   ]
 }
+
+# Native iPad client. It shares the staff user pool and groups with the web
+# dashboard, while retaining its own OAuth redirects and client identifier.
+resource "aws_cognito_user_pool_client" "native_pos" {
+  name         = "coral-native-pos"
+  user_pool_id = aws_cognito_user_pool.main.id
+
+  allowed_oauth_flows                  = ["code"]
+  allowed_oauth_flows_user_pool_client = true
+  allowed_oauth_scopes                 = ["email", "openid", "profile"]
+  supported_identity_providers         = ["COGNITO"]
+
+  callback_urls = ["coralapp://auth/callback"]
+  logout_urls   = ["coralapp://auth/signout"]
+
+  access_token_validity  = 1
+  id_token_validity      = 1
+  refresh_token_validity = 30
+
+  token_validity_units {
+    access_token  = "hours"
+    id_token      = "hours"
+    refresh_token = "days"
+  }
+
+  generate_secret               = false
+  prevent_user_existence_errors = "ENABLED"
+  explicit_auth_flows           = ["ALLOW_REFRESH_TOKEN_AUTH", "ALLOW_USER_SRP_AUTH"]
+}

@@ -10,6 +10,12 @@ resource "aws_cognito_identity_pool" "main" {
     server_side_token_check = false
   }
 
+  cognito_identity_providers {
+    client_id               = aws_cognito_user_pool_client.native_pos.id
+    provider_name           = "cognito-idp.${var.aws_region}.amazonaws.com/${aws_cognito_user_pool.main.id}"
+    server_side_token_check = false
+  }
+
   tags = {
     Name        = "coral-admin-identity-pool"
     Environment = var.environment
