@@ -20,3 +20,10 @@ export function isAdminRequest(req: NextRequest): boolean {
   if (groups === null) return !process.env.AWS_LAMBDA_FUNCTION_NAME;
   return groups.some((g) => g === "Administrator" || g === "Overlord");
 }
+
+/** Destructive operations (such as order cancellation) require Overlord. */
+export function isOverlordRequest(req: NextRequest): boolean {
+  const groups = groupsOf(req);
+  if (groups === null) return !process.env.AWS_LAMBDA_FUNCTION_NAME;
+  return groups.includes("Overlord");
+}

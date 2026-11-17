@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isAdminRequest } from "@/app/lib/adminAuth";
-import { createTabletOrder, recordTabletPayment } from "@/app/lib/dynamodb-server";
+import { isAdminRequest, isOverlordRequest } from "@/app/lib/adminAuth";
+import { createTabletOrder, markOrderCancelled, recordTabletPayment } from "@/app/lib/dynamodb-server";
 import type { Order, OrderLineItem } from "@/app/lib/dynamodb";
 
 type TabletLine = {
@@ -23,7 +23,7 @@ type TabletOrder = {
 };
 
 type TabletPayment = { orderID: string; tip: number; paymentMethod: string; paidAt: string; amountTendered?: number | null; changeDue?: number | null };
-type SyncOperation = { id: string; type: "upsertOrder"; order: TabletOrder } | { id: string; type: "recordPayment"; payment: TabletPayment };
+type SyncOperation = { id: string; type: "upsertOrder"; order: TabletOrder } | { id: string; type: "recordPayment"; payment: TabletPayment } | { id: string; type: "cancelOrder"; cancellation: { orderID: string } };
 
 const MAX_OPERATIONS = 25;
 const MAX_LINES = 100;
@@ -103,7 +103,7 @@ export async function POST(request: NextRequest) {
   const accepted: string[] = [];
   for (const raw of body.operations) {
     if (!raw || typeof raw !== "object") return NextResponse.json({ error: "Invalid operation" }, { status: 400 });
-    const operation = raw as { id?: unknown; type?: unknown; order?: unknown; payment?: unknown };
+    const operation = raw as { id?: unknown; type?: unknown; order?: unknown; payment?: unknown; cancellation?: unknown };
     if (typeof operation.id !== "string" || !uuid.test(operation.id)) return NextResponse.json({ error: "Unsupported operation" }, { status: 400 });
     if (operation.type === "upsertOrder") {
       const order = toOrder(operation.order);
@@ -113,6 +113,11 @@ export async function POST(request: NextRequest) {
       const payment = toPayment(operation.payment);
       if (!payment) return NextResponse.json({ error: "Invalid payment" }, { status: 400 });
       await recordTabletPayment(payment);
+    } else if (operation.type === "cancelOrder") {
+      if (!isOverlordRequest(request)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      const cancellation = operation.cancellation as { orderID?: unknown } | undefined;
+      if (!cancellation || typeof cancellation.orderID !== "string" || !uuid.test(cancellation.orderID)) return NextResponse.json({ error: "Invalid cancellation" }, { status: 400 });
+      await markOrderCancelled(cancellation.orderID);
     } else return NextResponse.json({ error: "Unsupported operation" }, { status: 400 });
     accepted.push(operation.id);
   }
