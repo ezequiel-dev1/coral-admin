@@ -86,7 +86,7 @@ function toPayment(value: unknown): { id: string; tip: number; paymentMethod: "c
   const method = payment.paymentMethod;
   const tendered = payment.amountTendered === undefined || payment.amountTendered === null ? undefined : amount(payment.amountTendered);
   const change = payment.changeDue === undefined || payment.changeDue === null ? undefined : amount(payment.changeDue);
-  if (!id || !uuid.test(id) || tip === null || !paidAt || Number.isNaN(Date.parse(paidAt)) || (method !== "cash" && method !== "other") || (payment.amountTendered !== undefined && payment.amountTendered !== null && tendered === null) || (payment.changeDue !== undefined && payment.changeDue !== null && change === null)) return null;
+  if (!id || !paidAt || Number.isNaN(Date.parse(paidAt)) || (method !== "cash" && method !== "other") || (payment.amountTendered !== undefined && payment.amountTendered !== null && tendered === null) || (payment.changeDue !== undefined && payment.changeDue !== null && change === null)) return null;
   return { id, tip, paymentMethod: method, paidAt, ...(tendered === undefined ? {} : { amountTendered: tendered }), ...(change === undefined ? {} : { changeDue: change }) };
 }
 
@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
     } else if (operation.type === "cancelOrder") {
       if (!isOverlordRequest(request)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       const cancellation = operation.cancellation as { orderID?: unknown } | undefined;
-      if (!cancellation || typeof cancellation.orderID !== "string" || !uuid.test(cancellation.orderID)) return NextResponse.json({ error: "Invalid cancellation" }, { status: 400 });
+      if (!cancellation || typeof cancellation.orderID !== "string" || cancellation.orderID.length > 160) return NextResponse.json({ error: "Invalid cancellation" }, { status: 400 });
       await markOrderCancelled(cancellation.orderID);
     } else return NextResponse.json({ error: "Unsupported operation" }, { status: 400 });
     accepted.push(operation.id);

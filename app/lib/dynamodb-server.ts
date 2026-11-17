@@ -255,6 +255,15 @@ export async function fetchMenuForSync(): Promise<{ items: MenuItem[]; ingredien
   return { items, ingredients };
 }
 
+/** Active/recent POS orders exposed to authenticated native tablets. */
+export async function fetchOrdersForTablet(): Promise<Order[]> {
+  const orders = await scanAll<Order>(ORDERS_TABLE);
+  return orders
+    .filter((order) => !order.id.startsWith("meta-"))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, 500);
+}
+
 /** Remember which menu items are on Uber, and what was sent, so later syncs keep republishing them. */
 export async function markMenuItemsUberSynced(
   synced: { id: string; hash: string }[],

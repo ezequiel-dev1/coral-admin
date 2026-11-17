@@ -26,6 +26,7 @@ locals {
   # route key => requires a signed-in Cognito user?
   api_routes_uat = merge(local.api_routes, {
     "GET /api/tablet/v1/menu" = true
+    "GET /api/tablet/v1/orders" = true
     "POST /api/tablet/v1/sync" = true
     # UAT-only Uber helper. The handler also checks for an Administrator/Overlord group.
     "POST /api/uber-eats/test" = true
@@ -81,7 +82,7 @@ resource "aws_iam_role_policy" "api_uat" {
       {
         Sid      = "OrdersTable"
         Effect   = "Allow"
-        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem"]
+        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:Scan"]
         Resource = aws_dynamodb_table.orders.arn
       },
       {
