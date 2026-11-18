@@ -6,8 +6,8 @@ import { X, Printer } from "lucide-react";
 import { MenuItem } from "../lib/dynamodb";
 
 /**
- * Printable, print-optimized version of the live menu. Each category gets a
- * page, so newly-created categories cannot be silently left out of the menu.
+ * Printable, print-optimized version of the live menu. Categories are kept in
+ * alphabetical order and split across at most two balanced printed pages.
  */
 
 function formatPrice(price: string): string {
@@ -84,7 +84,7 @@ function BrandHeader() {
   );
 }
 
-function SectionBlock({ title, items }: { title: string; items: MenuItem[] }) {
+function SectionBlock({ title, items, showDescription }: { title: string; items: MenuItem[]; showDescription?: boolean }) {
   return (
     <div className="pm-section">
       <div className="pm-section-pill">
@@ -98,7 +98,7 @@ function SectionBlock({ title, items }: { title: string; items: MenuItem[] }) {
               <span className="pm-leader" aria-hidden />
               <span className="pm-item-price">{formatPrice(item.price)}</span>
             </div>
-            {item.description && (
+            {showDescription && item.description && (
               <div className="pm-item-desc">{item.description}</div>
             )}
           </li>
@@ -132,6 +132,26 @@ export function PrintableMenu({
       }));
   }, [items]);
 
+  const pages = useMemo(() => {
+    const itemTarget = Math.ceil(categories.reduce((total, group) => total + group.items.length, 0) / 2);
+    const firstPage: typeof categories = [];
+    const secondPage: typeof categories = [];
+    let firstPageItems = 0;
+
+    for (const group of categories) {
+      // Do not split a category across pages. Once the first page has reached
+      // its item target, remaining categories continue on page two.
+      if (firstPage.length === 0 || firstPageItems < itemTarget) {
+        firstPage.push(group);
+        firstPageItems += group.items.length;
+      } else {
+        secondPage.push(group);
+      }
+    }
+
+    return secondPage.length > 0 ? [firstPage, secondPage] : [firstPage];
+  }, [categories]);
+
   // Close on Escape.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -155,8 +175,8 @@ export function PrintableMenu({
       </div>
 
       <div className="pm-scroll">
-        {categories.map(({ category, items: categoryItems }) => (
-          <div className="pm-page" key={category}>
+        {pages.map((pageCategories) => (
+          <div className="pm-page" key={pageCategories.map(({ category }) => category).join("|")}>
             <div className="pm-frame">
               <BrandHeader />
               <div className="pm-pagehead">
@@ -167,7 +187,14 @@ export function PrintableMenu({
 
               <CoralSprig className="pm-accent pm-accent-tl" />
               <WaveAccent className="pm-accent pm-accent-wave" />
-              <SectionBlock title={category.toLocaleUpperCase("es")} items={categoryItems} />
+              {pageCategories.map(({ category, items: categoryItems }) => (
+                <SectionBlock
+                  key={category}
+                  title={category.toLocaleUpperCase("es")}
+                  items={categoryItems}
+                  showDescription={category.toLocaleLowerCase("es") === "combos"}
+                />
+              ))}
 
               <div className="pm-footer">
                 <span className="pm-rule" />
