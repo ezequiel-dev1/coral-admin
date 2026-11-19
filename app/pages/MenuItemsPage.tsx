@@ -16,7 +16,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { CurrencyInput } from "@/components/ui/currency-input";
-import { Plus, Pencil, Trash2, ImageOff, ImagePlus, Printer, FileText, Carrot, ClipboardPaste, UploadCloud, CloudOff, CircleCheck, TriangleAlert, Ellipsis } from "lucide-react";
+import { Plus, Pencil, Trash2, ImageOff, ImagePlus, Carrot, ClipboardPaste, UploadCloud, CloudOff, CircleCheck, TriangleAlert, Ellipsis } from "lucide-react";
 import { authedFetch } from "../lib/apiFetch";
 import { APP_ENV } from "../lib/tables";
 import { formatPlatformPrice, PLATFORM_MARKUP_PERCENT } from "../lib/pricing";
@@ -36,8 +36,6 @@ import {
 } from "../lib/dynamodb";
 import { getObjectUrl, uploadMenuItemImage } from "../lib/receipts";
 import { IngredientPicker, useIsTouchDevice } from "./IngredientPicker";
-import { PrintableMenu } from "./PrintableMenu";
-import { PrintableFlyer } from "./PrintableFlyer";
 import { ModifierGroupsEditor, cleanModifierGroups } from "./ModifierGroupsEditor";
 
 const emptyForm: MenuItemInput = {
@@ -159,12 +157,6 @@ export function MenuItemsPage() {
 
   // Full-size image preview state
   const [fullImageUrl, setFullImageUrl] = useState("");
-
-  // Printable menu view
-  const [showPrintable, setShowPrintable] = useState(false);
-
-  // Printable flyer view
-  const [showFlyer, setShowFlyer] = useState(false);
 
   // Uber Eats menu sync (sandbox/UAT only, admins only)
   const showUber = isAdmin && APP_ENV !== "production";
@@ -699,15 +691,7 @@ export function MenuItemsPage() {
         <div>
           <h1>{t("menuItems.title")}</h1>
         </div>
-        <div className="menu-items-desktop-toolbar flex flex-row items-center gap-2" style={{ flexDirection: "row" }}>
-          <Button variant="outline" onClick={() => setShowPrintable(true)}>
-            <Printer data-icon="inline-start" />
-            {t("menuItems.printMenu")}
-          </Button>
-          <Button variant="outline" onClick={() => setShowFlyer(true)}>
-            <FileText data-icon="inline-start" />
-            {t("menuItems.printFlyer")}
-          </Button>
+        <div className="menu-items-desktop-toolbar ml-auto flex flex-row items-center gap-2" style={{ flexDirection: "row" }}>
           {showUber && (
             <>
               <select
@@ -907,14 +891,6 @@ export function MenuItemsPage() {
             <DialogTitle>{t("menuItems.actions")}</DialogTitle>
           </DialogHeader>
           <div className="menu-item-mobile-action-list">
-            <Button variant="outline" onClick={() => { setMobileToolbarOpen(false); setShowPrintable(true); }}>
-              <Printer data-icon="inline-start" />
-              {t("menuItems.printMenu")}
-            </Button>
-            <Button variant="outline" onClick={() => { setMobileToolbarOpen(false); setShowFlyer(true); }}>
-              <FileText data-icon="inline-start" />
-              {t("menuItems.printFlyer")}
-            </Button>
             {showUber && (
               <>
                 <select
@@ -1203,13 +1179,6 @@ export function MenuItemsPage() {
         </DialogContent>
       </Dialog>
 
-      {showPrintable && (
-        <PrintableMenu items={items} onClose={() => setShowPrintable(false)} />
-      )}
-
-      {showFlyer && (
-        <PrintableFlyer items={items} onClose={() => setShowFlyer(false)} />
-      )}
     </div>
   );
 }

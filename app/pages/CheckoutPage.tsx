@@ -24,7 +24,6 @@ import {
   XCircle,
   Clock,
   Loader2,
-  QrCode,
   Copy,
   Check,
   Landmark,
@@ -37,7 +36,6 @@ import {
   Camera,
   X,
   DollarSign,
-  Smartphone,
   Inbox,
 } from "lucide-react";
 import {
@@ -52,7 +50,6 @@ import {
   type CashReconciliation,
   type CashEvidence,
   saveOpenCheck,
-  setOpenCheckTip,
   setSelfCheckoutToken,
   closeCheckPaid,
   getExchangeRate,
@@ -70,15 +67,13 @@ import { uploadCorteEvidence, uploadTransferEvidence, getObjectUrl } from "../li
 import { PaymentQR } from "./PaymentQR";
 import { SeatingChart } from "./SeatingChart";
 import { tableName } from "../lib/tableName";
-import { authedFetch } from "../lib/apiFetch";
-import type { CardPresentPayment } from "../lib/cardPresent";
 import { printAgent, canUsePrintAgent, toPrinterText, PRINT_COLUMNS } from "../lib/printAgent";
 import { buildSaleTickets } from "../lib/saleTicket";
 import { useIsTouchDevice } from "./IngredientPicker";
 import { SplitCheckDialog, type SplitBucketResult } from "./SplitCheckDialog";
 
-/** Phases of the card-via-QR payment flow. */
-type CardPayPhase = "idle" | "creating" | "awaiting" | "paid";
+/** BBVA Terminal charges a flat 2.5% processing fee on card sales. */
+const BBVA_TERMINAL_FEE_RATE = 0.025;
 
 /** Bank details shown to the customer when paying by transfer. */
 const TRANSFER_DETAILS = {
@@ -146,19 +141,6 @@ export function CheckoutPage() {
   const [orderNotes, setOrderNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  // Card charged by hand in the Stripe Dashboard app (Tap to Pay). Recorded as a
-  // "card" payment; `tapPayments` are recent in-person Stripe payments we poll for
-  // so the cashier can match one to this check by amount.
-  const [stripeApp, setStripeApp] = useState(false);
-  const [tapPayments, setTapPayments] = useState<CardPresentPayment[]>([]);
-  const [tapError, setTapError] = useState(false);
-
-  // Card-via-QR payment flow
-  const [cardPhase, setCardPhase] = useState<CardPayPhase>("idle");
-  const [cardPayUrl, setCardPayUrl] = useState<string | null>(null);
-  const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
-  const [pendingSessionId, setPendingSessionId] = useState<string | null>(null);
-  const [cancelling, setCancelling] = useState(false);
 
   // Currency the customer pays in (cash only for USD) and cash handed over, in that currency.
   const [currency, setCurrency] = useState<Currency>("MXN");
@@ -418,41 +400,6 @@ export function CheckoutPage() {
     }
   }
 
-  // While awaiting a card payment, poll the order until the Stripe webhook
-  // flips it to `paid` (or `cancelled`). Stops on resolution or unmount.
-  useEffect(() => {
-    if (cardPhase !== "awaiting" || !pendingOrderId) return;
-
-    let cancelled = false;
-    const interval = setInterval(async () => {
-      try {
-        const order = await getOrder(pendingOrderId);
-        if (cancelled || !order) return;
-        if (order.status === "paid") {
-          setCardPhase("paid");
-          printSaleReceipt(order.id);
-          fetchOrders()
-            .then((ords) => {
-              if (!cancelled) setOrders(checkoutOrders(ords));
-            })
-            .catch(() => {});
-        } else if (order.status === "cancelled") {
-          // Payment expired/failed: close out the QR flow.
-          setCardPhase("idle");
-          setCardPayUrl(null);
-          setPendingOrderId(null);
-        }
-      } catch (err) {
-        console.error("Failed to poll order status:", err);
-      }
-    }, 3000);
-
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [cardPhase, pendingOrderId]);
-
   function changeQuantity(menuItemId: string, delta: number) {
     setCart((prev) =>
       prev
@@ -474,7 +421,6 @@ export function CheckoutPage() {
     setCurrentCheckId(null);
     setOrderNotes("");
     setPaymentMethod("cash");
-    setStripeApp(false);
     setCurrency("MXN");
     setAmountReceived("");
     setTipInput("");
@@ -497,42 +443,6 @@ export function CheckoutPage() {
   );
   const itemCount = useMemo(() => cart.reduce((n, l) => n + l.quantity, 0), [cart]);
 
-  // While the "Card (Stripe app)" option is showing, poll for in-person payments
-  // so the one the cashier just took on the iPhone can be matched to this check.
-  const tapWatching = showCheckout && stripeApp && paymentMethod === "card" && cardPhase === "idle";
-  useEffect(() => {
-    if (!tapWatching) return;
-    let cancelled = false;
-    async function poll() {
-      try {
-        const res = await authedFetch("/api/card-present");
-        if (!res.ok) throw new Error(`card-present ${res.status}`);
-        const data: { payments?: CardPresentPayment[] } = await res.json();
-        if (cancelled) return;
-        setTapPayments(data.payments ?? []);
-        setTapError(false);
-      } catch (err) {
-        console.error("Failed to load card payments:", err);
-        if (!cancelled) setTapError(true);
-      }
-    }
-    poll();
-    const interval = setInterval(poll, 4000);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [tapWatching]);
-
-  // Unclaimed payments whose amount equals this check's total (centavo-exact).
-  const tapMatches = useMemo(() => {
-    const used = new Set(
-      orders.map((o) => o.stripePaymentIntentId).filter((id): id is string => !!id)
-    );
-    const cents = Math.round(total * 100);
-    return tapPayments.filter((p) => !used.has(p.id) && Math.round(p.amount * 100) === cents);
-  }, [tapPayments, orders, total]);
-
   // Amounts stay in MXN; for USD the customer is shown the total converted at the current rate.
   const payingUsd = paymentMethod === "cash" && currency === "USD";
   const totalInCurrency = useMemo(
@@ -552,11 +462,9 @@ export function CheckoutPage() {
 
   // Auto-save the selected table's cart to its open check (debounced), so an
   // in-progress check survives refresh/close and syncs across devices. Skips
-  // while a card payment is awaiting (the order is locked for the webhook) and
-  // avoids creating an empty check for a table that has none yet.
+  // and avoids creating an empty check for a table that has none yet.
   useEffect(() => {
     if (!selectedTable) return;
-    if (cardPhase !== "idle") return;
     if (cart.length === 0 && !currentCheckId) return;
 
     let cancelled = false;
@@ -842,90 +750,13 @@ export function CheckoutPage() {
     setPrintingBank(false);
   }
 
-  /**
-   * Close the check. `tapPayment` is an in-person Stripe payment (Tap to Pay)
-   * the cashier matched to this check; without it, "Card (Stripe app)" is
-   * recorded manually.
-   */
-  async function handleSubmitOrder(tapPayment?: CardPresentPayment) {
+  /** Close the check after cash, BBVA Terminal, transfer, or other payment. */
+  async function handleSubmitOrder() {
     if (cart.length === 0 || !selectedTable) return;
     if (usdNeedsRate || receivedShort) return;
 
-    if (tapPayment) {
-      // The payment may have been claimed by another tablet since the last refresh.
-      try {
-        const fresh = await fetchOrders();
-        setOrders(checkoutOrders(fresh));
-        if (fresh.some((o) => o.stripePaymentIntentId === tapPayment.id)) return;
-      } catch (err) {
-        console.error("Failed to verify card payment:", err);
-        return;
-      }
-    }
-
-    if (paymentMethod === "card" && !stripeApp) {
-      // Card payments are completed by the customer on their own phone: we
-      // create a Stripe Checkout Session and show its URL as a QR code to
-      // scan. The table's open check stays `open`; the Stripe webhook flips it
-      // to `paid` and writes the real fee/net. We poll until that happens.
-      setSubmitting(true);
-      setCardPhase("creating");
-      try {
-        // Ensure the open check exists and persist the chosen tip onto it.
-        const checkId = await saveOpenCheck(currentCheckId, {
-          tableLabel: selectedTable,
-          server: user?.name || user?.email || "",
-          items: cart,
-          subtotal,
-          tax,
-          total: Math.round((subtotal + tax) * 100) / 100,
-          notes: orderNotes.trim(),
-        });
-        setCurrentCheckId(checkId);
-        await setOpenCheckTip(checkId, tip, total);
-
-        const res = await authedFetch("/api/checkout", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            orderId: checkId,
-            tableLabel: selectedTable,
-            tax,
-            tip,
-            lines: cart.map((l) => ({
-              name: l.name,
-              unitPrice: l.unitPrice,
-              quantity: l.quantity,
-            })),
-          }),
-        });
-
-        if (!res.ok) {
-          throw new Error(`Checkout session failed (${res.status})`);
-        }
-
-        const data: { id?: string; url?: string } = await res.json();
-        if (!data.url || !data.id) throw new Error("No checkout session returned");
-
-        // Show the QR and start polling for payment confirmation.
-        setPendingOrderId(checkId);
-        setPendingSessionId(data.id);
-        setCardPayUrl(data.url);
-        setCardPhase("awaiting");
-      } catch (err) {
-        console.error("Failed to start card payment:", err);
-        setCardPhase("idle");
-        setCardPayUrl(null);
-        setPendingOrderId(null);
-      } finally {
-        setSubmitting(false);
-      }
-      return;
-    }
-
-    // Non-card (cash / transfer / other): close out the table's check as paid
-    // immediately. No processing fee applies, so net equals the total. The
-    // table frees up once the check is `paid`.
+    // BBVA Terminal payments are confirmed by the cashier and recorded
+    // immediately; no Stripe transaction or webhook is awaited.
     setSubmitting(true);
     try {
       // Make sure the open check exists and holds the latest cart, then close
@@ -951,6 +782,10 @@ export function CheckoutPage() {
         }
       }
       const isCash = paymentMethod === "cash";
+      const processingFee =
+        paymentMethod === "card"
+          ? Math.round(total * BBVA_TERMINAL_FEE_RATE * 100) / 100
+          : 0;
       await closeCheckPaid(checkId, {
         tip,
         total,
@@ -962,10 +797,8 @@ export function CheckoutPage() {
         // Cash only: what the customer handed over (defaults to the exact total) and the change.
         amountTendered: isCash ? (received > 0 ? received : totalInCurrency) : undefined,
         change: isCash ? changeDue : undefined,
-        // Matched Tap to Pay payment: keep the real Stripe fee/net for the books.
-        stripePaymentIntentId: tapPayment?.id,
-        processingFee: tapPayment ? tapPayment.fee : undefined,
-        netAmount: tapPayment && tapPayment.net !== null ? tapPayment.net : undefined,
+        processingFee,
+        netAmount: Math.round((total - processingFee) * 100) / 100,
       });
       setProofFile(null);
       setProofMsg(null);
@@ -1010,49 +843,11 @@ export function CheckoutPage() {
     window.setTimeout(() => popup.print(), 200);
   }
 
-  /** Close the checkout dialog and reset the card/QR flow. */
+  /** Close the checkout dialog and clear pending transfer evidence. */
   function closeCheckout() {
     setShowCheckout(false);
     setProofFile(null);
     setProofMsg(null);
-    setCardPhase("idle");
-    setCardPayUrl(null);
-    setPendingOrderId(null);
-    setPendingSessionId(null);
-    setTapPayments([]);
-  }
-
-  /** After a successful card payment: clear the cart and close out. */
-  function finishCardPayment() {
-    closeCheckout();
-    clearCart();
-    loadData();
-  }
-
-  /**
-   * Cancel an awaiting card payment: expire the Stripe session (so the QR can
-   * no longer be paid) and mark the order cancelled, then close the dialog.
-   */
-  async function cancelCardPayment() {
-    if (pendingSessionId && pendingOrderId) {
-      setCancelling(true);
-      try {
-        await authedFetch("/api/checkout/cancel", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            sessionId: pendingSessionId,
-            orderId: pendingOrderId,
-          }),
-        });
-      } catch (err) {
-        console.error("Failed to cancel card payment:", err);
-      } finally {
-        setCancelling(false);
-      }
-    }
-    closeCheckout();
-    loadData();
   }
 
   async function handleUpdateStatus(order: Order, status: OrderStatus) {
@@ -1134,15 +929,8 @@ export function CheckoutPage() {
   const expectedCash = parseMoneyInput(openingFloat) + cashToday.total;
   const cashDifference = parseMoneyInput(countedCash) - expectedCash;
 
-  /** Print the reconciliation as a standalone receipt-style page in a popup. */
-  function openPrintWindow(): Window | null {
-    return window.open("", "_blank", "width=420,height=640");
-  }
-
-  /** `win` may be pre-opened (before an await) so popup blockers allow it. */
-  function printReconciliation(rec: CashReconciliation, win?: Window | null) {
-    const esc = (s: string) =>
-      s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  /** Print a cash reconciliation on the register thermal printer via the Print Agent. */
+  async function printReconciliation(rec: CashReconciliation) {
     const diff = rec.difference;
     const balanced = Math.abs(diff) < 0.005;
     const diffLabel = balanced
@@ -1150,64 +938,54 @@ export function CheckoutPage() {
       : diff > 0
         ? t("checkout.over")
         : t("checkout.short");
-    const row = (label: string, value: string, bold = false) =>
-      `<div class="row${bold ? " bold" : ""}"><span>${esc(label)}</span><span>${esc(value)}</span></div>`;
-
-    const html = `<!doctype html><html><head><meta charset="utf-8" />
-<title>${esc(t("checkout.cashReconciliation"))}</title>
-<style>
-  body{font:14px -apple-system,Helvetica,Arial,sans-serif;max-width:320px;margin:24px auto;color:#000}
-  h1{font-size:18px;margin:0 0 4px;text-align:center}
-  .sub{text-align:center;font-size:12px;color:#555;margin-bottom:12px}
-  .row{display:flex;justify-content:space-between;padding:2px 0}
-  .bold{font-weight:700;border-top:1px solid #000;margin-top:4px;padding-top:4px}
-  .comments{margin-top:12px;white-space:pre-wrap;font-size:13px}
-  .sig{margin-top:40px;border-top:1px solid #000;text-align:center;font-size:12px;padding-top:4px}
-</style></head><body>
-<h1>${esc(t("checkout.cashReconciliation"))}</h1>
-<div class="sub">${esc(formatDate(rec.createdAt))} · ${rec.cashOrderCount} ${esc(t("checkout.ordersLabel"))}</div>
-${row(t("checkout.openingFloat"), formatMoney(rec.openingFloat))}
-${row(t("checkout.cashSales"), formatMoney(rec.cashSales))}
-${row(t("checkout.cashTips"), formatMoney(rec.cashTips))}
-${row(t("checkout.expectedCash"), formatMoney(rec.expectedCash), true)}
-${row(t("checkout.countedCash"), formatMoney(rec.countedCash))}
-${row(diffLabel, formatMoney(Math.abs(diff)), true)}
-<div class="sub" style="margin-top:14px"><strong>${esc(t("checkout.bankTransactions"))}</strong></div>
-${row(`${t("checkout.cardSales")} (${rec.cardCount})`, formatMoney(rec.cardTotal))}
-${row(t("checkout.processingFee"), "− " + formatMoney(rec.cardFees))}
-${row(`${t("checkout.transferSales")} (${rec.transferCount})`, formatMoney(rec.transferTotal))}
-${row(t("checkout.totalBank"), formatMoney(rec.bankTotal), true)}
-${
-  rec.comments.trim()
-    ? `<div class="comments"><strong>${esc(t("checkout.comments"))}:</strong><br/>${esc(rec.comments.trim())}</div>`
-    : ""
-}
-${
-  (rec.evidence ?? []).length > 0
-    ? `<div class="comments"><strong>${esc(t("checkout.evidence"))} (${rec.evidence!.length}):</strong><br/>${rec.evidence!.map((e) => esc(e.name)).join("<br/>")}</div>`
-    : ""
-}
-<div class="sig">${esc(rec.createdBy)}</div>
-${
-  rec.reviewedBy
-    ? `<div class="sub" style="margin-top:8px">${esc(t("checkout.reviewedBy"))}: ${esc(rec.reviewedBy)} · ${esc(formatDate(rec.reviewedAt || ""))}</div>`
-    : ""
-}
-</body></html>`;
-
-    const w = win ?? openPrintWindow();
-    if (!w) return; // popup blocked
-    w.document.open();
-    w.document.write(html);
-    w.document.close();
-    w.focus();
-    w.print();
+    const row = (label: string, value: string) => {
+      const safeLabel = toPrinterText(label);
+      const safeValue = toPrinterText(value);
+      const gap = PRINT_COLUMNS - safeLabel.length - safeValue.length;
+      return gap > 0 ? `${safeLabel}${" ".repeat(gap)}${safeValue}` : `${safeLabel} ${safeValue}`;
+    };
+    const comments = rec.comments.trim();
+    const evidence = rec.evidence ?? [];
+    const lines = [
+      { text: "CORAL", align: "center" as const, bold: true, size: 2 as const },
+      { text: "REEF & BEEF", align: "center" as const, bold: true, size: 2 as const },
+      "",
+      { text: toPrinterText(t("checkout.cashReconciliation")), align: "center" as const, bold: true },
+      { text: toPrinterText(`${formatDate(rec.createdAt)} - ${rec.cashOrderCount} ${t("checkout.ordersLabel")}`), align: "center" as const },
+      "-".repeat(PRINT_COLUMNS),
+      row(t("checkout.openingFloat"), formatMoney(rec.openingFloat)),
+      row(t("checkout.cashSales"), formatMoney(rec.cashSales)),
+      row(t("checkout.cashTips"), formatMoney(rec.cashTips)),
+      { text: row(t("checkout.expectedCash"), formatMoney(rec.expectedCash)), bold: true },
+      row(t("checkout.countedCash"), formatMoney(rec.countedCash)),
+      { text: row(diffLabel, formatMoney(Math.abs(diff))), bold: true },
+      "",
+      { text: toPrinterText(t("checkout.bankTransactions")), align: "center" as const, bold: true },
+      row(`${t("checkout.cardSales")} (${rec.cardCount})`, formatMoney(rec.cardTotal)),
+      row(t("checkout.processingFee"), `- ${formatMoney(rec.cardFees)}`),
+      row(`${t("checkout.transferSales")} (${rec.transferCount})`, formatMoney(rec.transferTotal)),
+      { text: row(t("checkout.totalBank"), formatMoney(rec.bankTotal)), bold: true },
+      ...(comments ? ["", `${toPrinterText(t("checkout.comments"))}:`, ...wrapPrintText(toPrinterText(comments))] : []),
+      ...(evidence.length ? ["", `${toPrinterText(t("checkout.evidence"))} (${evidence.length}):`, ...evidence.flatMap((item) => wrapPrintText(toPrinterText(item.name)))] : []),
+      "",
+      "-".repeat(PRINT_COLUMNS),
+      { text: toPrinterText(rec.createdBy), align: "center" as const },
+      ...(rec.reviewedBy ? [{ text: toPrinterText(`${t("checkout.reviewedBy")}: ${rec.reviewedBy}`), align: "center" as const }, { text: toPrinterText(formatDate(rec.reviewedAt || "")), align: "center" as const }] : []),
+    ];
+    const result = await printAgent.print({ printer: "register", lines, feed: 5, cut: true });
+    if (!result.ok) {
+      const reason = result.error === "timeout"
+        ? t("printer.errTimeout")
+        : result.error === "unsupported"
+          ? t("printer.errUnsupported")
+          : result.message || t("printer.errNetwork");
+      console.error("Failed to print cash reconciliation:", reason);
+      alert(reason);
+    }
   }
 
   /** Save today's reconciliation so other managers can review it, then print. */
   async function saveAndPrintReconciliation() {
-    // Open the print window now, inside the click, so it isn't popup-blocked.
-    const printWin = openPrintWindow();
     setReconcileSaving(true);
     try {
       // Upload attached evidence first so the record only references stored files.
@@ -1246,9 +1024,8 @@ ${
       setEvidenceFiles([]);
       setReconcileView("history");
       setExpandedCorte(saved.id);
-      printReconciliation(saved, printWin);
+      await printReconciliation(saved);
     } catch (err) {
-      printWin?.close();
       console.error("Failed to save cash reconciliation:", err);
       alert(t("checkout.corteSaveError"));
     } finally {
@@ -1576,57 +1353,15 @@ ${
       <Dialog
         open={showCheckout}
         onOpenChange={(open) => {
-          // Don't let a click-away cancel an in-progress card payment.
-          if (!open && (cardPhase === "awaiting" || cardPhase === "creating")) {
-            return;
-          }
           if (!open) closeCheckout();
           else setShowCheckout(true);
         }}
       >
         <DialogContent className="max-h-[90dvh] overflow-y-auto overscroll-contain sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>
-              {cardPhase === "idle"
-                ? t("checkout.completeOrder")
-                : cardPhase === "paid"
-                  ? t("checkout.paymentReceived")
-                  : t("checkout.scanToPay")}
-            </DialogTitle>
+            <DialogTitle>{t("checkout.completeOrder")}</DialogTitle>
           </DialogHeader>
 
-          {cardPhase === "paid" ? (
-            <div className="flex flex-col items-center gap-3 py-6 text-center">
-              <CheckCircle2 size={56} className="text-emerald-500" />
-              <p className="text-lg font-semibold">
-                {t("checkout.paymentReceived")}
-              </p>
-              <p className="text-sm text-[var(--text-muted)]">
-                {formatMoney(total)}
-              </p>
-            </div>
-          ) : cardPhase === "awaiting" && cardPayUrl ? (
-            <div className="flex flex-col items-center gap-4 py-2 text-center">
-              <p className="text-sm text-[var(--text-muted)]">
-                {t("checkout.scanInstructions")}
-              </p>
-              <div className="rounded-xl border border-input bg-white p-3">
-                <PaymentQR url={cardPayUrl} size={240} />
-              </div>
-              <p className="text-base font-semibold">{formatMoney(total)}</p>
-              <div className="flex items-center gap-2 text-sm text-[var(--text-muted)]">
-                <Loader2 size={16} className="animate-spin" />
-                {t("checkout.waitingForPayment")}
-              </div>
-            </div>
-          ) : cardPhase === "creating" ? (
-            <div className="flex flex-col items-center gap-3 py-10 text-center">
-              <Loader2 size={32} className="animate-spin text-primary" />
-              <p className="text-sm text-[var(--text-muted)]">
-                {t("checkout.generatingQr")}
-              </p>
-            </div>
-          ) : (
           <div className="grid gap-4 py-2">
             <div className="rounded-lg bg-[var(--surface-muted)] p-3 text-sm">
               <div className="flex justify-between text-[var(--text-muted)]">
@@ -1737,14 +1472,11 @@ ${
               <Label>{t("checkout.paymentMethod")}</Label>
               <select
                 className="h-8 w-full rounded-lg border border-input bg-transparent px-2.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                value={stripeApp ? "stripe_app" : paymentMethod}
+                value={paymentMethod}
                 onChange={(e) => {
-                  // "stripe_app" is a UI-only choice: stored as a regular "card" payment.
-                  const isApp = e.target.value === "stripe_app";
-                  const method = (isApp ? "card" : e.target.value) as PaymentMethod;
-                  setStripeApp(isApp);
+                  const method = e.target.value as PaymentMethod;
                   setPaymentMethod(method);
-                  // USD is cash-only (card is charged in MXN through Stripe).
+                  // USD is cash-only; the BBVA terminal charges in MXN.
                   if (method !== "cash") {
                     setCurrency("MXN");
                     setAmountReceived("");
@@ -1753,7 +1485,6 @@ ${
               >
                 <option value="cash">{t("checkout.payCash")}</option>
                 <option value="card">{t("checkout.payCard")}</option>
-                <option value="stripe_app">{t("checkout.payStripeApp")}</option>
                 <option value="transfer">{t("checkout.payTransfer")}</option>
                 <option value="other">{t("checkout.payOther")}</option>
               </select>
@@ -1825,47 +1556,14 @@ ${
               </div>
             )}
 
-            {stripeApp && (
+            {paymentMethod === "card" && (
               <div className="grid gap-2 rounded-lg border border-input bg-[var(--surface-muted)] p-3">
                 <div className="flex items-center gap-2">
-                  <Smartphone size={16} className="text-primary" />
-                  <Label className="mb-0">{t("checkout.stripeAppTitle")}</Label>
+                  <Label className="mb-0">{t("checkout.bbvaTerminalTitle")}</Label>
                 </div>
                 <p className="text-xs text-[var(--text-muted)]">
-                  {t("checkout.stripeAppInstructions", { amount: formatMoney(total) })}
+                  {t("checkout.bbvaTerminalInstructions", { amount: formatMoney(total) })}
                 </p>
-                {tapMatches.length === 0 ? (
-                  <div role="status" className="flex items-center gap-2 text-sm text-[var(--text-muted)]">
-                    <Loader2 size={16} className="animate-spin" />
-                    {tapError ? t("checkout.stripeAppError") : t("checkout.stripeAppWaiting")}
-                  </div>
-                ) : (
-                  <div className="grid gap-2">
-                    {tapMatches.map((p) => (
-                      <div
-                        key={p.id}
-                        className="flex items-center justify-between gap-2 rounded-lg border border-emerald-500/40 bg-emerald-500/10 p-2"
-                      >
-                        <div className="text-sm">
-                          <div className="font-semibold">
-                            {formatMoney(p.amount)} {p.brand ? `· ${p.brand.toUpperCase()}` : ""}{" "}
-                            {p.last4 ? `•••• ${p.last4}` : ""}
-                          </div>
-                          <div className="text-xs text-[var(--text-muted)]">
-                            {new Date(p.createdAt).toLocaleTimeString(lang, {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                          </div>
-                        </div>
-                        <Button size="sm" onClick={() => handleSubmitOrder(p)} disabled={submitting}>
-                          <CheckCircle2 data-icon="inline-start" />
-                          {t("checkout.stripeAppConfirm")}
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
             )}
 
@@ -2023,44 +1721,19 @@ ${
               />
             </div>
           </div>
-          )}
 
           <DialogFooter>
-            {cardPhase === "paid" ? (
-              <Button onClick={finishCardPayment}>{t("checkout.done")}</Button>
-            ) : cardPhase === "awaiting" ? (
-              <Button
-                variant="outline"
-                onClick={cancelCardPayment}
-                disabled={cancelling}
-              >
-                {cancelling ? t("checkout.cancelling") : t("checkout.cancel")}
-              </Button>
-            ) : cardPhase === "creating" ? null : (
-              <>
+            <>
                 <Button variant="outline" onClick={closeCheckout}>
                   {t("checkout.cancel")}
                 </Button>
                 <Button
-                  variant={stripeApp && tapMatches.length > 0 ? "outline" : "default"}
                   onClick={() => handleSubmitOrder()}
                   disabled={submitting || usdNeedsRate || receivedShort}
                 >
-                  {submitting ? (
-                    t("checkout.saving")
-                  ) : stripeApp ? (
-                    t("checkout.stripeAppManual")
-                  ) : paymentMethod === "card" ? (
-                    <>
-                      <QrCode data-icon="inline-start" />
-                      {t("checkout.payWithCard")}
-                    </>
-                  ) : (
-                    t("checkout.recordPayment")
-                  )}
+                  {submitting ? t("checkout.saving") : paymentMethod === "card" ? t("checkout.recordBbvaPayment") : t("checkout.recordPayment")}
                 </Button>
               </>
-            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

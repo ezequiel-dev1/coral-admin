@@ -14,7 +14,6 @@ import { ReservationsPage } from "./pages/ReservationsPage";
 import { EmployeesPage } from "./pages/EmployeesPage";
 import { UberTestPage } from "./pages/UberTestPage";
 import { APP_ENV } from "./lib/tables";
-import { PDF_PRINTER_STORAGE_KEY } from "./lib/printAgent";
 import { authedFetch } from "./lib/apiFetch";
 import { OfflineSupport } from "./OfflineSupport";
 import { Button } from "@/components/ui/button";
@@ -82,7 +81,6 @@ export function Dashboard() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [uatSettingsOpen, setUatSettingsOpen] = useState(false);
-  const [pdfPrinter, setPdfPrinter] = useState(false);
   const [uberEatsEnabled, setUberEatsEnabledState] = useState(true);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteGroups, setInviteGroups] = useState<string[]>(["Mesero"]);
@@ -121,17 +119,8 @@ export function Dashboard() {
   }, [lang]);
 
   useEffect(() => {
-    if (APP_ENV === "uat") setPdfPrinter(localStorage.getItem(PDF_PRINTER_STORAGE_KEY) === "true");
-  }, []);
-
-  useEffect(() => {
     getUberEatsEnabled().then(setUberEatsEnabledState).catch((error) => console.error("Failed to load Uber Eats setting:", error));
   }, []);
-
-  function togglePdfPrinter(enabled: boolean) {
-    setPdfPrinter(enabled);
-    localStorage.setItem(PDF_PRINTER_STORAGE_KEY, String(enabled));
-  }
 
   async function toggleUberEats(enabled: boolean) {
     setUberEatsEnabledState(enabled);
@@ -305,7 +294,6 @@ export function Dashboard() {
             <DialogHeader><DialogTitle>{t("settings.title")}</DialogTitle></DialogHeader>
             <div className="settings-dialog-list">
               <label className="settings-row"><span>{t("settings.uberEats")}</span><span className="settings-toggle"><input type="checkbox" checked={uberEatsEnabled} onChange={(event) => toggleUberEats(event.target.checked)} /><i /></span></label>
-              {APP_ENV === "uat" && <label className="settings-row"><span>{t("settings.pdfPrinter")}</span><span className="settings-toggle"><input type="checkbox" checked={pdfPrinter} onChange={(event) => togglePdfPrinter(event.target.checked)} /><i /></span></label>}
               <div className="invite-section"><strong>{t("settings.inviteTitle")}</strong><input value={inviteEmail} onChange={(event) => setInviteEmail(event.target.value)} type="email" placeholder={t("settings.inviteEmail")} /><div className="invite-groups">{["Administrator", "Manager", "Mesero"].map((group) => <label key={group}><input type="checkbox" checked={inviteGroups.includes(group)} onChange={() => setInviteGroups((groups) => groups.includes(group) ? groups.filter((item) => item !== group) : [...groups, group])} />{group}</label>)}</div><Button size="sm" disabled={!inviteEmail || inviteGroups.length === 0} onClick={sendInvite}>{t("settings.sendInvite")}</Button>{inviteMessage && <small>{inviteMessage}</small>}</div>
             </div>
           </DialogContent>

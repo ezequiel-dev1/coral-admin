@@ -219,11 +219,11 @@ export async function cancelOrder(id: string, reason: string): Promise<void> {
 
 /**
  * Reopen a cancelled order, or a paid order that was not paid by card (card
- * payments are settled in Stripe and must be refunded there instead).
+ * payments are settled in the BBVA Terminal and must be refunded there instead).
  */
 export async function reopenOrder(order: Order): Promise<void> {
   if (order.status === "paid" && order.paymentMethod === "card") {
-    throw new Error("Card payments cannot be reopened. Refund them in Stripe.");
+    throw new Error("Card payments cannot be reopened. Refund them through the BBVA Terminal.");
   }
   if (order.status !== "paid" && order.status !== "cancelled") {
     throw new Error("Only paid or cancelled orders can be reopened.");

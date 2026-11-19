@@ -492,8 +492,8 @@ export type Order = {
   tax: number;
   tip: number;
   total: number;
-  // Estimated Stripe processing fee and net amount received (card payments
-  // only; 0 for cash). The customer is never charged this — it's cost tracking.
+  // BBVA Terminal processing fee and net amount received (card payments only;
+  // 0 for cash). The customer is never charged this — it's cost tracking.
   processingFee: number;
   netAmount: number;
   status: OrderStatus;
@@ -892,9 +892,8 @@ export async function setSelfCheckoutToken(id: string, token: string): Promise<v
 
 /**
  * Pay out (close) an open check. Sets the final tip/total/payment method and
- * flips status to "paid", which frees the table. For card payments the status
- * stays "open" here and the Stripe webhook flips it — use saveOpenCheck +
- * the checkout API for that path instead.
+ * flips status to "paid", which frees the table. BBVA Terminal card payments
+ * are cashier-confirmed and close immediately like the other payment methods.
  */
 export async function closeCheckPaid(
   id: string,
@@ -910,7 +909,7 @@ export async function closeCheckPaid(
     exchangeRate?: number;
     amountTendered?: number;
     change?: number;
-    /** In-person Stripe payment (Tap to Pay) matched to this check, with its real fee/net. */
+    /** Optional external payment reference, if one is available. */
     stripePaymentIntentId?: string;
     processingFee?: number;
     netAmount?: number;
