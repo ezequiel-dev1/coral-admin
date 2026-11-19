@@ -478,7 +478,7 @@ export type ServiceType = "dine-in" | "takeout";
 
 /** Where an order originated. Marketplace orders are already paid by Uber. */
 export type OrderSource = "pos" | "uber-eats";
-export type UberWorkflowStatus = "new" | "preparing" | "ready" | "completed";
+export type UberWorkflowStatus = "new" | "preparing" | "completed";
 
 export type PaymentMethod = "cash" | "card" | "transfer" | "other";
 
@@ -540,8 +540,6 @@ export type Order = {
   heldAt?: string;
   /** S3 key of the bank-transfer proof (screenshot sent by the customer), for transfer payments. */
   transferEvidenceKey?: string;
-  /** Set when the kitchen finished cooking an open order ("Ready" tab). Status stays "open" so checkout/payment flows are unaffected. */
-  readyAt?: string;
   mergedInto?: string;
   mergedFrom?: string[];
   splitFrom?: string;

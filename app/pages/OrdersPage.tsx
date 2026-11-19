@@ -17,7 +17,6 @@ import {
 import {
   ArrowLeft,
   Ban,
-  CheckCircle2,
   ChevronRight,
   Loader2,
   Minus,
@@ -62,7 +61,6 @@ import {
   newLineId,
   normalizeLines,
   parsePrice,
-  markOrdersReady,
   reopenOrder,
   round2,
   saveOrder,
@@ -95,16 +93,14 @@ const selectClass =
 const textareaClass =
   "w-full rounded-lg border border-input bg-transparent px-2.5 py-1.5 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50";
 
-/** What the badge/tabs show: an open order the kitchen finished is "ready". */
-type DisplayStatus = Order["status"] | "ready";
+type DisplayStatus = Order["status"];
 
 function displayStatus(o: Order): DisplayStatus {
-  return o.status === "open" && o.readyAt ? "ready" : o.status;
+  return o.status;
 }
 
 function statusVariant(status: DisplayStatus): "default" | "secondary" | "outline" | "destructive" {
   if (status === "open") return "default";
-  if (status === "ready") return "outline";
   if (status === "held") return "secondary";
   if (status === "cancelled") return "destructive";
   return "outline";
@@ -114,8 +110,6 @@ function statusLabel(t: T, status: DisplayStatus): string {
   return t(`orders.status.${status}`);
 }
 
-const READY_BADGE_CLASS = "border-emerald-600 bg-emerald-50 text-emerald-800";
-
 function seatCountFor(tableLabel: string): number {
   return SEATING_SPOTS.find((s) => s.id === tableLabel)?.seats ?? 0;
 }
@@ -124,7 +118,7 @@ function seatCountFor(tableLabel: string): number {
 // Page: order list + editor switch
 // ===========================================================================
 
-type Filter = "active" | "ready" | "held" | "paid" | "cancelled" | "all";
+type Filter = "active" | "held" | "paid" | "cancelled";
 
 export function OrdersPage() {
   const { t } = useTranslation();
@@ -177,21 +171,16 @@ export function OrdersPage() {
       // DynamoDB with every other order for reporting, but do not duplicate
       // the restaurant team's operational queue.
       if (o.source === "uber-eats") return false;
-      if (filter === "all") return true;
-      if (filter === "active") return o.status === "open" && !o.readyAt;
-      if (filter === "ready") return o.status === "open" && !!o.readyAt;
+      if (filter === "active") return o.status === "open";
       return o.status === filter;
     });
   }, [orders, filter]);
 
   const counts = useMemo(() => {
     const restaurantOrders = orders.filter((o) => o.source !== "uber-eats");
-    const c = { active: 0, ready: 0, held: 0, paid: 0, cancelled: 0, all: restaurantOrders.length };
+    const c = { active: 0, held: 0, paid: 0, cancelled: 0 };
     for (const o of restaurantOrders) {
-      if (o.status === "open") {
-        if (o.readyAt) c.ready++;
-        else c.active++;
-      }
+      if (o.status === "open") c.active++;
       else if (o.status === "held") c.held++;
       else if (o.status === "paid") c.paid++;
       else if (o.status === "cancelled") c.cancelled++;
@@ -227,24 +216,6 @@ export function OrdersPage() {
     .filter((o) => selected.has(o.id))
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 
-  // Selected orders that are still cooking (open and not yet marked ready).
-  const readyCandidates = selectedOrders.filter((o) => o.status === "open" && !o.readyAt);
-
-  async function handleMarkReady() {
-    if (readyCandidates.length === 0) return;
-    setBusy(true);
-    try {
-      await markOrdersReady(readyCandidates.map((o) => o.id));
-      setSelected(new Set());
-      await load();
-    } catch (err) {
-      console.error("Mark ready failed:", err);
-      setError(t("orders.actionError"));
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function handleMerge() {
     if (selectedOrders.length < 2) return;
     setBusy(true);
@@ -262,7 +233,7 @@ export function OrdersPage() {
     }
   }
 
-  async function transitionUberOrder(order: Order, workflow: "preparing" | "ready" | "completed") {
+  async function transitionUberOrder(order: Order, workflow: "preparing" | "completed") {
     setBusy(true);
     try {
       const res = await authedFetch("/api/uber-eats/test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "transition_order", orderId: order.uberOrderId, scenario: workflow }) });
@@ -297,7 +268,7 @@ export function OrdersPage() {
     );
   }
 
-  const filters: Filter[] = ["active", "ready", "held", "paid", "cancelled", "all"];
+  const filters: Filter[] = ["active", "held", "paid", "cancelled"];
 
   return (
     <>
@@ -310,12 +281,6 @@ export function OrdersPage() {
           <p className="subhead">{t("orders.subtitle")}</p>
         </div>
         <div className="flex gap-2">
-          {readyCandidates.length >= 1 && (
-            <Button variant="outline" onClick={handleMarkReady} disabled={busy}>
-              {busy ? <Loader2 className="animate-spin" size={16} /> : <CheckCircle2 size={16} />}{" "}
-              {t("orders.markReady")} ({readyCandidates.length})
-            </Button>
-          )}
           {selectedOrders.length >= 2 && (
             <Button variant="outline" onClick={() => setShowMerge(true)}>
               <Merge size={16} /> {t("orders.merge")} ({selectedOrders.length})
@@ -396,7 +361,6 @@ export function OrdersPage() {
                   </div>
                   <Badge
                     variant={statusVariant(displayStatus(o))}
-                    className={displayStatus(o) === "ready" ? READY_BADGE_CLASS : undefined}
                   >
                     {statusLabel(t, displayStatus(o))}
                   </Badge>
@@ -454,7 +418,7 @@ type UberOrdersBoardProps = {
   loading: boolean;
   busy: boolean;
   onOpen: (order: Order) => void;
-  onTransition: (order: Order, workflow: "preparing" | "ready" | "completed") => void;
+  onTransition: (order: Order, workflow: "preparing" | "completed") => void;
 };
 
 /** A dedicated prep view for orders delivered by the Uber Eats webhook. */
@@ -463,8 +427,8 @@ function UberOrdersBoard({ orders, loading, busy, onOpen, onTransition }: UberOr
   const uberOrders = orders.filter((order) => order.source === "uber-eats" && order.status !== "cancelled");
   const columns = [
     { key: "new", label: t("orders.uber.newOrders"), orders: uberOrders.filter((order) => (order.uberWorkflowStatus ?? "new") === "new") },
-    { key: "preparing", label: t("orders.uber.preparing"), orders: uberOrders.filter((order) => order.uberWorkflowStatus === "preparing") },
-    { key: "ready", label: t("orders.uber.readyForPickup"), orders: uberOrders.filter((order) => order.uberWorkflowStatus === "ready") },
+    // Legacy ready records remain actionable in Preparing after that state is retired.
+    { key: "preparing", label: t("orders.uber.preparing"), orders: uberOrders.filter((order) => order.uberWorkflowStatus !== "new" && order.uberWorkflowStatus !== "completed") },
     { key: "complete", label: t("orders.uber.completed"), orders: uberOrders.filter((order) => order.uberWorkflowStatus === "completed") },
   ];
 
@@ -506,12 +470,11 @@ function UberOrdersBoard({ orders, loading, busy, onOpen, onTransition }: UberOr
                         <small>{order.uberReadyForPickupAt ? t("orders.uber.pickupBy", { time: new Date(order.uberReadyForPickupAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }) : t("orders.uber.pickupOrder")}</small>
                       </button>
                       {column.key === "new" && (
-                        <button className="uber-ready-action" onClick={() => onTransition(order, "preparing")} disabled={busy}>
+                        <button className="uber-workflow-action" onClick={() => onTransition(order, "preparing")} disabled={busy}>
                           <UtensilsCrossed size={14} /> {t("orders.uber.acceptAndPrepare")} <ChevronRight size={14} />
                         </button>
                       )}
-                      {column.key === "preparing" && <button className="uber-ready-action" onClick={() => onTransition(order, "ready")} disabled={busy}><UtensilsCrossed size={14} /> {t("orders.markReady")} <ChevronRight size={14} /></button>}
-                      {column.key === "ready" && <button className="uber-ready-action" onClick={() => onTransition(order, "completed")} disabled={busy}><Bike size={14} /> {t("orders.uber.markPickedUp")} <ChevronRight size={14} /></button>}
+                      {column.key === "preparing" && <button className="uber-workflow-action" onClick={() => onTransition(order, "completed")} disabled={busy}><Bike size={14} /> {t("orders.uber.markPickedUp")} <ChevronRight size={14} /></button>}
                     </article>
                   );
                 })}
@@ -681,8 +644,7 @@ function OrderEditor({
   function confirmSendToKitchen() {
     setShowKitchenConfirm(false);
     return run(async () => {
-      // Sending to the kitchen again means there is food to cook: no longer "ready".
-      const saved = await persist({ readyAt: undefined });
+      const saved = await persist();
       if (!saved) return;
       // The print agent only exists on the tablet; elsewhere just save.
       if (canUsePrintAgent()) {
@@ -840,11 +802,10 @@ function OrderEditor({
                 : t("orders.newOrder")}
             {draft.splitLabel ? ` · ${draft.splitLabel}` : ""}
           </h1>
-          {(draft.status !== "open" || draft.readyAt) && (
+          {draft.status !== "open" && (
             <p className="subhead mb-4">
               <Badge
                 variant={statusVariant(displayStatus(draft))}
-                className={displayStatus(draft) === "ready" ? READY_BADGE_CLASS : undefined}
               >
                 {statusLabel(t, displayStatus(draft))}
               </Badge>

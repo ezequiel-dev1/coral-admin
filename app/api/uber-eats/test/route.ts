@@ -71,7 +71,7 @@ export async function POST(req: NextRequest) {
       const order = await getOrder(`uber-${body.orderId}`);
       if (!order || order.source !== "uber-eats") return NextResponse.json({ error: "Uber order not found" }, { status: 404 });
       const workflow = body.scenario;
-      if (workflow !== "preparing" && workflow !== "ready" && workflow !== "completed") return NextResponse.json({ error: "Invalid workflow state" }, { status: 400 });
+      if (workflow !== "preparing" && workflow !== "completed") return NextResponse.json({ error: "Invalid workflow state" }, { status: 400 });
       if (workflow === "preparing" && order.uberStoreId !== "uat-test-store") await acceptUberOrder(body.orderId, order.id, "sandbox");
       await setUberWorkflowStatus(order.id, workflow);
       return NextResponse.json({ ok: true, orderId: body.orderId, workflow });

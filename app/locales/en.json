@@ -583,14 +583,10 @@
     "empty": "No orders here yet.",
     "filter": {
       "active": "Active",
-      "ready": "Ready",
       "held": "Held",
       "paid": "Paid",
-      "cancelled": "Cancelled",
-      "all": "All"
+      "cancelled": "Cancelled"
     },
-    "markReady": "Mark as ready",
-    "markedReady": "Marked as ready.",
     "uber": {
       "deliveryBoard": "Delivery board",
       "liveMarketplaceOrders": "Live marketplace orders",
@@ -599,7 +595,6 @@
       "preparing": "Preparing",
       "acceptAndPrepare": "Accept & prepare",
       "markPickedUp": "Mark picked up",
-      "readyForPickup": "Ready for pickup",
       "completed": "Completed",
       "noOrders": "No orders",
       "guest": "Uber Eats guest",
@@ -610,7 +605,6 @@
       "awaitingCourier": "Awaiting courier"
     },
     "status": {
-      "ready": "Ready",
       "open": "Open",
       "held": "Held",
       "paid": "Paid",

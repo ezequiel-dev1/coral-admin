@@ -583,14 +583,10 @@
     "empty": "Aún no hay órdenes aquí.",
     "filter": {
       "active": "Activas",
-      "ready": "Listas",
       "held": "En espera",
       "paid": "Pagadas",
-      "cancelled": "Canceladas",
-      "all": "Todas"
+      "cancelled": "Canceladas"
     },
-    "markReady": "Marcar como lista",
-    "markedReady": "Marcada como lista.",
     "uber": {
       "deliveryBoard": "Tablero de entregas",
       "liveMarketplaceOrders": "Órdenes activas de plataformas",
@@ -599,7 +595,6 @@
       "preparing": "En preparación",
       "acceptAndPrepare": "Aceptar y preparar",
       "markPickedUp": "Marcar como recogida",
-      "readyForPickup": "Listas para recoger",
       "completed": "Completadas",
       "noOrders": "Sin órdenes",
       "guest": "Cliente de Uber Eats",
@@ -610,7 +605,6 @@
       "awaitingCourier": "Esperando repartidor"
     },
     "status": {
-      "ready": "Lista",
       "open": "Abierta",
       "held": "En espera",
       "paid": "Pagada",
