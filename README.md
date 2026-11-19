@@ -77,6 +77,25 @@ Create these secrets by hand first: `stripe-secret-key-uat` (`sk_test_...`) and
 The "Uber Test" tab (UAT only, admins) calls `POST /api/uber-eats/test` to simulate
 orders and cancellations, or replay a signed webhook for a real sandbox order.
 
+### Native POS ordering API
+
+Authenticated iOS and Android staff clients use `/api/pos/v1` in both UAT and
+production. API Gateway accepts ID tokens issued to either the web or native
+Cognito client. POS routes require an `Administrator`, `Overlord`, `Manager`,
+`Mesero`, or `POS` group; payments remain exclusively in the web application.
+
+- `GET /api/pos/v1/menu` returns currently sellable items and modifier groups.
+- `GET /api/pos/v1/orders` lists recent orders; optional `status` and
+  `updatedSince` filters are supported.
+- `POST /api/pos/v1/orders` creates an open order. `clientRequestId` is a UUID
+  idempotency key.
+- `GET` and `PATCH /api/pos/v1/orders/{orderId}` retrieve or replace an open
+  POS order; `POST /api/pos/v1/orders/{orderId}/cancel` cancels it.
+
+Create and update bodies submit menu IDs, quantities, modifier selections, and
+notes only. The server validates availability and modifiers, then stores the
+authoritative price snapshot and totals.
+
 ### Uber Eats orders
 
 Uber webhook orders and cancellations currently target only the UAT table

@@ -33,8 +33,9 @@ type ApiResult = {
 };
 
 type RouteModule = {
-  GET?: (req: NextRequest) => Promise<Response>;
-  POST?: (req: NextRequest) => Promise<Response>;
+  GET?: (req: NextRequest, context: { params: Promise<{ orderId: string }> }) => Promise<Response>;
+  POST?: (req: NextRequest, context: { params: Promise<{ orderId: string }> }) => Promise<Response>;
+  PATCH?: (req: NextRequest, context: { params: Promise<{ orderId: string }> }) => Promise<Response>;
 };
 
 // Dynamic imports are literal so esbuild bundles them, but they only execute
@@ -59,7 +60,16 @@ const ROUTES: Record<string, () => Promise<RouteModule>> = {
   "GET /api/tablet/v1/menu": () => import("../../app/api/tablet/v1/menu/route"),
   "GET /api/tablet/v1/orders": () => import("../../app/api/tablet/v1/orders/route"),
   "POST /api/tablet/v1/sync": () => import("../../app/api/tablet/v1/sync/route"),
+  "GET /api/pos/v1/menu": () => import("../../app/api/pos/v1/menu/route"),
+  "GET /api/pos/v1/orders": () => import("../../app/api/pos/v1/orders/route"),
+  "POST /api/pos/v1/orders": () => import("../../app/api/pos/v1/orders/route"),
 };
+
+const DYNAMIC_ROUTES: Array<{ method: string; pattern: RegExp; load: () => Promise<RouteModule> }> = [
+  { method: "GET", pattern: /^\/api\/pos\/v1\/orders\/([^/]+)$/, load: () => import("../../app/api/pos/v1/orders/[orderId]/route") },
+  { method: "PATCH", pattern: /^\/api\/pos\/v1\/orders\/([^/]+)$/, load: () => import("../../app/api/pos/v1/orders/[orderId]/route") },
+  { method: "POST", pattern: /^\/api\/pos\/v1\/orders\/([^/]+)\/cancel$/, load: () => import("../../app/api/pos/v1/orders/[orderId]/cancel/route") },
+];
 
 const secrets = new SecretsManagerClient({});
 
@@ -162,8 +172,14 @@ function json(statusCode: number, body: unknown): ApiResult {
 export async function handler(event: ApiEvent): Promise<ApiResult> {
   const method = event.requestContext.http.method.toUpperCase();
   const path = event.rawPath.replace(/\/+$/, "") || "/";
-  const load = ROUTES[`${method} ${path}`];
-  if (!load) return json(404, { error: "Not found" });
+  let load = ROUTES[`${method} ${path}`];
+  let orderId: string | undefined;
+  if (!load) {
+    const dynamic = DYNAMIC_ROUTES.find((candidate) => candidate.method === method && candidate.pattern.test(path));
+    if (!dynamic) return json(404, { error: "Not found" });
+    load = dynamic.load;
+    orderId = decodeURIComponent(dynamic.pattern.exec(path)?.[1] ?? "");
+  }
 
   try {
     await init();
@@ -176,7 +192,7 @@ export async function handler(event: ApiEvent): Promise<ApiResult> {
 
   try {
     const mod = await load();
-    const fn = method === "GET" ? mod.GET : mod.POST;
+    const fn = method === "GET" ? mod.GET : method === "PATCH" ? mod.PATCH : mod.POST;
     if (!fn) return json(405, { error: "Method not allowed" });
 
     const headers = new Headers();
@@ -201,7 +217,9 @@ export async function handler(event: ApiEvent): Promise<ApiResult> {
       body,
     });
 
-    const res = await fn(req);
+    const res = orderId && (method === "GET" || method === "PATCH" || method === "POST")
+      ? await (fn as (request: NextRequest, context: { params: Promise<{ orderId: string }> }) => Promise<Response>)(req, { params: Promise.resolve({ orderId }) })
+      : await (fn as (request: NextRequest) => Promise<Response>)(req);
     return {
       statusCode: res.status,
       headers: {

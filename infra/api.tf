@@ -31,16 +31,22 @@ locals {
   # - webhook: public, protected by Stripe's signature check inside the handler
   # - POST feedback: public, customers rate their order from the Stripe return page
   api_routes = {
-    "POST /api/webhook"           = false
-    "POST /api/uber-eats/webhook" = false
-    "POST /api/feedback"          = false
-    "GET /api/feedback"           = true
-    "GET /api/card-present"       = true
-    "POST /api/checkout"          = true
-    "POST /api/checkout/cancel"   = true
-    "POST /api/invitations"       = true
-    "GET /api/self-checkout"      = false
-    "POST /api/self-checkout"     = false
+    "POST /api/webhook"                        = false
+    "POST /api/uber-eats/webhook"              = false
+    "POST /api/feedback"                       = false
+    "GET /api/feedback"                        = true
+    "GET /api/card-present"                    = true
+    "POST /api/checkout"                       = true
+    "POST /api/checkout/cancel"                = true
+    "POST /api/invitations"                    = true
+    "GET /api/pos/v1/menu"                     = true
+    "GET /api/pos/v1/orders"                   = true
+    "POST /api/pos/v1/orders"                  = true
+    "GET /api/pos/v1/orders/{orderId}"         = true
+    "PATCH /api/pos/v1/orders/{orderId}"       = true
+    "POST /api/pos/v1/orders/{orderId}/cancel" = true
+    "GET /api/self-checkout"                   = false
+    "POST /api/self-checkout"                  = false
   }
 }
 
@@ -93,8 +99,17 @@ resource "aws_iam_role_policy" "api" {
       {
         Sid      = "OrdersTable"
         Effect   = "Allow"
-        Action   = ["dynamodb:GetItem", "dynamodb:UpdateItem"]
+        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:Scan"]
         Resource = aws_dynamodb_table.production["orders"].arn
+      },
+      {
+        Sid    = "PosMenuTables"
+        Effect = "Allow"
+        Action = ["dynamodb:Scan"]
+        Resource = [
+          aws_dynamodb_table.production["menu-items"].arn,
+          aws_dynamodb_table.production["menu-ingredients"].arn,
+        ]
       },
       {
         Sid      = "InviteUsers"
@@ -171,7 +186,9 @@ resource "aws_apigatewayv2_authorizer" "cognito" {
   identity_sources = ["$request.header.Authorization"]
 
   jwt_configuration {
-    audience = [aws_cognito_user_pool_client.app.id]
+    # Web and native POS clients use separate OAuth redirect URIs, but may
+    # call the same authenticated API.
+    audience = [aws_cognito_user_pool_client.app.id, aws_cognito_user_pool_client.native_pos.id]
     issuer   = "https://cognito-idp.${var.aws_region}.amazonaws.com/${aws_cognito_user_pool.main.id}"
   }
 }

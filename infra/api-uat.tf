@@ -25,13 +25,19 @@ locals {
 
   # route key => requires a signed-in Cognito user?
   api_routes_uat = merge(local.api_routes, {
-    "GET /api/tablet/v1/menu" = true
-    "GET /api/tablet/v1/orders" = true
-    "POST /api/tablet/v1/sync" = true
+    "GET /api/tablet/v1/menu"                  = true
+    "GET /api/tablet/v1/orders"                = true
+    "POST /api/tablet/v1/sync"                 = true
+    "GET /api/pos/v1/menu"                     = true
+    "GET /api/pos/v1/orders"                   = true
+    "POST /api/pos/v1/orders"                  = true
+    "GET /api/pos/v1/orders/{orderId}"         = true
+    "PATCH /api/pos/v1/orders/{orderId}"       = true
+    "POST /api/pos/v1/orders/{orderId}/cancel" = true
     # UAT-only Uber helper. The handler also checks for an Administrator/Overlord group.
     "POST /api/uber-eats/test" = true
     # Publishes the UAT menu to the Uber sandbox store (admin group checked in the handler).
-    "POST /api/uber-eats/menu" = true
+    "POST /api/uber-eats/menu"  = true
     "GET /api/uber-eats/stores" = true
   })
 }
@@ -173,7 +179,7 @@ resource "aws_apigatewayv2_authorizer" "cognito_uat" {
   identity_sources = ["$request.header.Authorization"]
 
   jwt_configuration {
-    audience = [aws_cognito_user_pool_client.app.id]
+    audience = [aws_cognito_user_pool_client.app.id, aws_cognito_user_pool_client.native_pos.id]
     issuer   = "https://cognito-idp.${var.aws_region}.amazonaws.com/${aws_cognito_user_pool.main.id}"
   }
 }

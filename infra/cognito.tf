@@ -131,8 +131,9 @@ resource "aws_cognito_user_pool_client" "app" {
   ]
 }
 
-# Native iPad client. It shares the staff user pool and groups with the web
-# dashboard, while retaining its own OAuth redirects and client identifier.
+# Native iOS and Android POS client. Both apps register the coralapp scheme;
+# platform-specific universal/app links can be added here when their domains
+# are finalized. It shares staff groups with the web dashboard.
 resource "aws_cognito_user_pool_client" "native_pos" {
   name         = "coral-native-pos"
   user_pool_id = aws_cognito_user_pool.main.id
@@ -142,8 +143,14 @@ resource "aws_cognito_user_pool_client" "native_pos" {
   allowed_oauth_scopes                 = ["email", "openid", "profile"]
   supported_identity_providers         = ["COGNITO"]
 
-  callback_urls = ["coralapp://auth/callback"]
-  logout_urls   = ["coralapp://auth/signout"]
+  callback_urls = [
+    "coralapp://auth/callback",
+    # Swagger UI uses the same public client and exchanges the PKCE code in
+    # the browser, so it needs its own registered HTTPS callback in each site.
+    "https://${var.uat_domain_name}/api-docs",
+    "https://${var.domain_name}/api-docs",
+  ]
+  logout_urls = ["coralapp://auth/signout"]
 
   access_token_validity  = 1
   id_token_validity      = 1

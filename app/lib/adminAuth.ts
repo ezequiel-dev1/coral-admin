@@ -27,3 +27,10 @@ export function isOverlordRequest(req: NextRequest): boolean {
   if (groups === null) return !process.env.AWS_LAMBDA_FUNCTION_NAME;
   return groups.includes("Overlord");
 }
+
+/** Staff allowed to operate the native POS ordering API. Payments remain web-only. */
+export function isPosRequest(req: NextRequest): boolean {
+  const groups = groupsOf(req);
+  if (groups === null) return !process.env.AWS_LAMBDA_FUNCTION_NAME;
+  return groups.some((g) => ["Administrator", "Overlord", "Manager", "Mesero", "POS"].includes(g));
+}

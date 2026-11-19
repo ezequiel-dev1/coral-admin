@@ -39,7 +39,7 @@ output "cognito_client_id" {
 }
 
 output "native_pos_cognito_client_id" {
-  description = "Cognito App Client ID for Coral App on iPad"
+  description = "Cognito App Client ID for Coral POS on iOS and Android"
   value       = aws_cognito_user_pool_client.native_pos.id
 }
 

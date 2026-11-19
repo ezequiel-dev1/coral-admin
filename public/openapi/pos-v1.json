@@ -1,0 +1,152 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Coral Native POS Ordering API",
+    "version": "1.0.0",
+    "description": "Online ordering API for Coral iOS and Android POS clients. Payments are available only in the Coral web application. Use a Cognito ID token from the coral-native-pos client."
+  },
+  "servers": [
+    { "url": "https://admin-uat.coral.restaurant", "description": "UAT" },
+    { "url": "https://admin.coral.restaurant", "description": "Production" }
+  ],
+  "security": [{ "CognitoIdToken": [] }],
+  "paths": {
+    "/api/pos/v1/menu": {
+      "get": {
+        "tags": ["Menu"],
+        "summary": "Get the sellable menu",
+        "description": "Returns available menu items and their valid modifier groups.",
+        "responses": {
+          "200": { "description": "Menu", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MenuResponse" } } } },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "403": { "$ref": "#/components/responses/Forbidden" }
+        }
+      }
+    },
+    "/api/pos/v1/orders": {
+      "get": {
+        "tags": ["Orders"],
+        "summary": "List recent orders",
+        "parameters": [
+          { "name": "status", "in": "query", "schema": { "type": "string", "enum": ["open", "held", "paid", "cancelled"] } },
+          { "name": "updatedSince", "in": "query", "description": "ISO timestamp. Currently evaluated against creation time; use periodic full refreshes.", "schema": { "type": "string", "format": "date-time" } }
+        ],
+        "responses": { "200": { "description": "Orders", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrderListResponse" } } } } }
+      },
+      "post": {
+        "tags": ["Orders"],
+        "summary": "Create an open order",
+        "description": "clientRequestId is a UUID idempotency key. The server validates item availability and modifier selections, then calculates canonical prices and totals.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateOrderRequest" } } } },
+        "responses": {
+          "201": { "description": "Order created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateOrderResponse" } } } },
+          "200": { "description": "Existing order returned for an idempotent retry", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateOrderResponse" } } } },
+          "400": { "$ref": "#/components/responses/InvalidRequest" }
+        }
+      }
+    },
+    "/api/pos/v1/orders/{orderId}": {
+      "parameters": [{ "$ref": "#/components/parameters/OrderId" }],
+      "get": {
+        "tags": ["Orders"],
+        "summary": "Get an order",
+        "responses": {
+          "200": { "description": "Order", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrderResponse" } } } },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "patch": {
+        "tags": ["Orders"],
+        "summary": "Replace an open POS order",
+        "description": "Send the complete desired order. Only an open order with source pos can be modified. The server recalculates all prices.",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateOrderRequest" } } } },
+        "responses": {
+          "200": { "description": "Order updated", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrderResponse" } } } },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    },
+    "/api/pos/v1/orders/{orderId}/cancel": {
+      "parameters": [{ "$ref": "#/components/parameters/OrderId" }],
+      "post": {
+        "tags": ["Orders"],
+        "summary": "Cancel an open POS order",
+        "responses": {
+          "200": { "description": "Order cancelled", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CancelResponse" } } } },
+          "409": { "$ref": "#/components/responses/Conflict" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "CognitoIdToken": { "type": "http", "scheme": "bearer", "bearerFormat": "JWT", "description": "Paste a Cognito ID token, without the Bearer prefix." }
+    },
+    "parameters": {
+      "OrderId": { "name": "orderId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }
+    },
+    "responses": {
+      "Unauthorized": { "description": "Missing, expired, or invalid Cognito ID token" },
+      "Forbidden": { "description": "Caller is not in a POS-authorized Cognito group" },
+      "NotFound": { "description": "Order does not exist" },
+      "Conflict": { "description": "Order cannot be changed because it is no longer open" },
+      "InvalidRequest": { "description": "Invalid JSON, unavailable menu item, or invalid modifier selection" }
+    },
+    "schemas": {
+      "ModifierSelection": {
+        "type": "object",
+        "required": ["groupId", "optionId"],
+        "properties": { "groupId": { "type": "string" }, "optionId": { "type": "string" } }
+      },
+      "OrderLineRequest": {
+        "type": "object",
+        "required": ["menuItemId", "quantity"],
+        "properties": {
+          "menuItemId": { "type": "string", "example": "menu-burger-classic" },
+          "quantity": { "type": "integer", "minimum": 1, "maximum": 100, "example": 2 },
+          "modifierSelections": { "type": "array", "items": { "$ref": "#/components/schemas/ModifierSelection" } },
+          "instructions": { "type": "string", "maxLength": 1000, "example": "No onion on one" }
+        }
+      },
+      "UpdateOrderRequest": {
+        "type": "object",
+        "required": ["tableLabel", "serviceType", "items"],
+        "properties": {
+          "tableLabel": { "type": "string", "maxLength": 80, "example": "Table 8" },
+          "serviceType": { "type": "string", "enum": ["dine-in", "takeout"] },
+          "customerName": { "type": "string", "maxLength": 160 },
+          "notes": { "type": "string", "maxLength": 2000 },
+          "items": { "type": "array", "minItems": 1, "maxItems": 100, "items": { "$ref": "#/components/schemas/OrderLineRequest" } }
+        }
+      },
+      "CreateOrderRequest": {
+        "allOf": [
+          { "$ref": "#/components/schemas/UpdateOrderRequest" },
+          { "type": "object", "required": ["clientRequestId"], "properties": { "clientRequestId": { "type": "string", "format": "uuid", "example": "b74d61b8-732f-4a0a-a790-637696261e8e" } } }
+        ]
+      },
+      "Modifier": {
+        "type": "object",
+        "properties": { "groupId": { "type": "string" }, "group": { "type": "string" }, "id": { "type": "string" }, "name": { "type": "string" }, "price": { "type": "number" } }
+      },
+      "OrderLine": {
+        "type": "object",
+        "properties": {
+          "lineId": { "type": "string" }, "menuItemId": { "type": "string" }, "name": { "type": "string" }, "basePrice": { "type": "number" }, "unitPrice": { "type": "number" }, "quantity": { "type": "integer" }, "modifiers": { "type": "array", "items": { "$ref": "#/components/schemas/Modifier" } }, "instructions": { "type": "string" }
+        }
+      },
+      "Order": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" }, "createdAt": { "type": "string", "format": "date-time" }, "tableLabel": { "type": "string" }, "server": { "type": "string" }, "serviceType": { "type": "string", "enum": ["dine-in", "takeout"] }, "source": { "type": "string", "example": "pos" }, "status": { "type": "string", "enum": ["open", "held", "paid", "cancelled"] }, "items": { "type": "array", "items": { "$ref": "#/components/schemas/OrderLine" } }, "subtotal": { "type": "number" }, "tax": { "type": "number" }, "tip": { "type": "number" }, "total": { "type": "number" }, "notes": { "type": "string" }
+        }
+      },
+      "MenuItem": { "type": "object", "properties": { "id": { "type": "string" }, "name": { "type": "string" }, "description": { "type": "string" }, "category": { "type": "string" }, "price": { "type": "string", "example": "185.00" }, "order": { "type": "number" }, "imageUrl": { "type": "string", "format": "uri", "nullable": true, "description": "Private S3 image URL, signed for imageUrlExpiresIn seconds. Cache the image bytes, not this URL." }, "modifierGroups": { "type": "array", "items": { "type": "object" } } } },
+      "MenuResponse": { "type": "object", "properties": { "generatedAt": { "type": "string", "format": "date-time" }, "imageUrlExpiresIn": { "type": "integer", "example": 300, "description": "Validity period for each non-null imageUrl." }, "items": { "type": "array", "items": { "$ref": "#/components/schemas/MenuItem" } } } },
+      "OrderResponse": { "type": "object", "properties": { "order": { "$ref": "#/components/schemas/Order" } } },
+      "CreateOrderResponse": { "allOf": [{ "$ref": "#/components/schemas/OrderResponse" }, { "type": "object", "properties": { "created": { "type": "boolean" } } }] },
+      "OrderListResponse": { "type": "object", "properties": { "generatedAt": { "type": "string", "format": "date-time" }, "orders": { "type": "array", "items": { "$ref": "#/components/schemas/Order" } } } },
+      "CancelResponse": { "type": "object", "properties": { "cancelled": { "type": "boolean", "example": true } } }
+    }
+  }
+}

@@ -93,6 +93,34 @@ export async function createTabletOrder(order: Order): Promise<boolean> {
   }
 }
 
+/** Replace an open POS order. The condition prevents mobile clients from
+ * changing an order once it has entered the web payment workflow. */
+export async function replaceOpenPosOrder(order: Order): Promise<void> {
+  await getServerClient().send(new PutCommand({
+    TableName: ORDERS_TABLE,
+    Item: JSON.parse(JSON.stringify(order)),
+    ConditionExpression: "attribute_exists(id) AND #status = :open AND #source = :source",
+    ExpressionAttributeNames: { "#status": "status", "#source": "source" },
+    ExpressionAttributeValues: { ":open": "open", ":source": "pos" },
+  }));
+}
+
+/** Cancel an unpaid POS order. Payment is deliberately not exposed to native clients. */
+export async function cancelOpenPosOrder(id: string): Promise<void> {
+  const now = new Date().toISOString();
+  await getServerClient().send(new UpdateCommand({
+    TableName: ORDERS_TABLE,
+    Key: { id },
+    ConditionExpression: "attribute_exists(id) AND #status = :open AND #source = :source",
+    UpdateExpression: "SET #status = :cancelled, cancelReason = :reason, statusHistory = list_append(if_not_exists(statusHistory, :empty), :event)",
+    ExpressionAttributeNames: { "#status": "status", "#source": "source" },
+    ExpressionAttributeValues: {
+      ":open": "open", ":source": "pos", ":cancelled": "cancelled",
+      ":reason": "Cancelled from POS", ":empty": [], ":event": [{ status: "cancelled", at: now }],
+    },
+  }));
+}
+
 /** Settle a tablet's offline-safe cash/other payment without touching a check
  * that was already settled through another channel. */
 export async function recordTabletPayment(input: {

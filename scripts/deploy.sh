@@ -57,8 +57,9 @@ echo "==> Reading deploy targets from terraform outputs"
 BUCKET="$(terraform -chdir="$INFRA_DIR" output -raw "$BUCKET_OUTPUT")"
 DISTRIBUTION_ID="$(terraform -chdir="$INFRA_DIR" output -raw "$DISTRIBUTION_OUTPUT")"
 SITE_URL="$(terraform -chdir="$INFRA_DIR" output -raw "$URL_OUTPUT" 2>/dev/null || echo '(unknown)')"
+NATIVE_POS_CLIENT_ID="$(terraform -chdir="$INFRA_DIR" output -raw native_pos_cognito_client_id)"
 
-if [[ -z "$BUCKET" || -z "$DISTRIBUTION_ID" ]]; then
+if [[ -z "$BUCKET" || -z "$DISTRIBUTION_ID" || -z "$NATIVE_POS_CLIENT_ID" ]]; then
   echo "ERROR: could not resolve bucket or distribution id from terraform output." >&2
   echo "       Run 'terraform apply' in infra/ first." >&2
   exit 1
@@ -76,7 +77,7 @@ fi
 echo "==> Building static export (next build) with NEXT_PUBLIC_APP_ENV=$APP_ENV"
 rm -rf "$OUT_DIR"
 # A value set here wins over the one in .env.local.
-NEXT_PUBLIC_APP_ENV="$APP_ENV" npm run build
+NEXT_PUBLIC_APP_ENV="$APP_ENV" NEXT_PUBLIC_COGNITO_NATIVE_POS_CLIENT_ID="$NATIVE_POS_CLIENT_ID" npm run build
 
 if [[ ! -d "$OUT_DIR" ]]; then
   echo "ERROR: build did not produce an 'out/' directory. Is output: 'export' set in next.config.ts?" >&2
