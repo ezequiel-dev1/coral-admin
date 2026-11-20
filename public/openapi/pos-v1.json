@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Coral Native POS Ordering API",
-    "version": "1.0.0",
-    "description": "Online ordering API for Coral iOS and Android POS clients. Payments are available only in the Coral web application. Use a Cognito ID token from the coral-native-pos client."
+    "version": "1.1.0",
+    "description": "Online ordering API for Coral iOS and Android POS clients. Payments are available only in the Coral web application. Use a Cognito ID token from the coral-native-pos client. Dine-in orders must include both tableLabel and seat."
   },
   "servers": [
     { "url": "https://admin-uat.coral.restaurant", "description": "UAT" },
@@ -36,7 +36,7 @@
       "post": {
         "tags": ["Orders"],
         "summary": "Create an open order",
-        "description": "clientRequestId is a UUID idempotency key. The server validates item availability and modifier selections, then calculates canonical prices and totals.",
+        "description": "clientRequestId is a UUID idempotency key. Dine-in orders must identify the table with tableLabel and the guest with seat. The server validates item availability and modifier selections, then calculates canonical prices and totals.",
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateOrderRequest" } } } },
         "responses": {
           "201": { "description": "Order created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CreateOrderResponse" } } } },
@@ -58,7 +58,7 @@
       "patch": {
         "tags": ["Orders"],
         "summary": "Replace an open POS order",
-        "description": "Send the complete desired order. Only an open order with source pos can be modified. The server recalculates all prices.",
+        "description": "Send the complete desired order, including tableLabel and seat for dine-in service. Only an open order with source pos can be modified. The server recalculates all prices.",
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/UpdateOrderRequest" } } } },
         "responses": {
           "200": { "description": "Order updated", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/OrderResponse" } } } },
@@ -112,12 +112,17 @@
         "type": "object",
         "required": ["tableLabel", "serviceType", "items"],
         "properties": {
-          "tableLabel": { "type": "string", "maxLength": 80, "example": "Table 8" },
+          "tableLabel": { "type": "string", "maxLength": 80, "example": "Table 8", "description": "Table identifier. Required for every order." },
+          "seat": { "type": "integer", "minimum": 1, "maximum": 100, "example": 2, "description": "Guest seat at tableLabel. Required when serviceType is dine-in; omit for takeout." },
           "serviceType": { "type": "string", "enum": ["dine-in", "takeout"] },
           "customerName": { "type": "string", "maxLength": 160 },
           "notes": { "type": "string", "maxLength": 2000 },
           "items": { "type": "array", "minItems": 1, "maxItems": 100, "items": { "$ref": "#/components/schemas/OrderLineRequest" } }
-        }
+        },
+        "oneOf": [
+          { "properties": { "serviceType": { "enum": ["dine-in"] } }, "required": ["seat"] },
+          { "properties": { "serviceType": { "enum": ["takeout"] } } }
+        ]
       },
       "CreateOrderRequest": {
         "allOf": [
@@ -132,13 +137,13 @@
       "OrderLine": {
         "type": "object",
         "properties": {
-          "lineId": { "type": "string" }, "menuItemId": { "type": "string" }, "name": { "type": "string" }, "basePrice": { "type": "number" }, "unitPrice": { "type": "number" }, "quantity": { "type": "integer" }, "modifiers": { "type": "array", "items": { "$ref": "#/components/schemas/Modifier" } }, "instructions": { "type": "string" }
+          "lineId": { "type": "string" }, "menuItemId": { "type": "string" }, "name": { "type": "string" }, "basePrice": { "type": "number" }, "unitPrice": { "type": "number" }, "quantity": { "type": "integer" }, "seat": { "type": "integer", "minimum": 1, "maximum": 100, "description": "Copied from the order's seat for dine-in kitchen routing." }, "modifiers": { "type": "array", "items": { "$ref": "#/components/schemas/Modifier" } }, "instructions": { "type": "string" }
         }
       },
       "Order": {
         "type": "object",
         "properties": {
-          "id": { "type": "string", "format": "uuid" }, "createdAt": { "type": "string", "format": "date-time" }, "tableLabel": { "type": "string" }, "server": { "type": "string" }, "serviceType": { "type": "string", "enum": ["dine-in", "takeout"] }, "source": { "type": "string", "example": "pos" }, "status": { "type": "string", "enum": ["open", "held", "paid", "cancelled"] }, "items": { "type": "array", "items": { "$ref": "#/components/schemas/OrderLine" } }, "subtotal": { "type": "number" }, "tax": { "type": "number" }, "tip": { "type": "number" }, "total": { "type": "number" }, "notes": { "type": "string" }
+          "id": { "type": "string", "format": "uuid" }, "createdAt": { "type": "string", "format": "date-time" }, "tableLabel": { "type": "string", "description": "Table identifier." }, "seat": { "type": "integer", "minimum": 1, "maximum": 100, "nullable": true, "description": "Guest seat at the table; absent for takeout orders." }, "server": { "type": "string" }, "serviceType": { "type": "string", "enum": ["dine-in", "takeout"] }, "source": { "type": "string", "example": "pos" }, "status": { "type": "string", "enum": ["open", "held", "paid", "cancelled"] }, "items": { "type": "array", "items": { "$ref": "#/components/schemas/OrderLine" } }, "subtotal": { "type": "number" }, "tax": { "type": "number" }, "tip": { "type": "number" }, "total": { "type": "number" }, "notes": { "type": "string" }
         }
       },
       "MenuItem": { "type": "object", "properties": { "id": { "type": "string" }, "name": { "type": "string" }, "description": { "type": "string" }, "category": { "type": "string" }, "price": { "type": "string", "example": "185.00" }, "order": { "type": "number" }, "imageUrl": { "type": "string", "format": "uri", "nullable": true, "description": "Private S3 image URL, signed for imageUrlExpiresIn seconds. Cache the image bytes, not this URL." }, "modifierGroups": { "type": "array", "items": { "type": "object" } } } },

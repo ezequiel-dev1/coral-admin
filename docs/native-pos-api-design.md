@@ -141,6 +141,7 @@ Content-Type: application/json
 {
   "clientRequestId": "b74d61b8-732f-4a0a-a790-637696261e8e",
   "tableLabel": "Table 8",
+  "seat": 2,
   "serviceType": "dine-in",
   "customerName": "Ana",
   "notes": "Birthday party",
@@ -163,6 +164,13 @@ response. If the network fails after submission, retry the same request with
 the same value. A `201` response means the order was created; `200` with
 `"created": false` means that idempotency key already exists and the API has
 returned the canonical existing order.
+
+For `dine-in` orders, `tableLabel` identifies the table and `seat` identifies
+the guest at that table. `seat` is a positive integer from 1 through 100 and
+is required for dine-in orders; omit it for takeout orders. Both fields are
+returned on the canonical order, so clients should preserve them when replacing
+an order. For dine-in orders, the server also copies the order seat onto each
+canonical line item so kitchen tickets route items to the correct guest.
 
 The app must not submit menu names, item prices, discounts, tax, totals,
 payment details, or a caller-selected order status. The server looks up the
@@ -219,6 +227,7 @@ Create, get, and update responses wrap the stored canonical order:
     "id": "b74d61b8-732f-4a0a-a790-637696261e8e",
     "createdAt": "2026-11-18T20:30:00.000Z",
     "tableLabel": "Table 8",
+    "seat": 2,
     "server": "staff@example.com",
     "serviceType": "dine-in",
     "source": "pos",
