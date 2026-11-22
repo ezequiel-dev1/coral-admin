@@ -40,7 +40,9 @@ import { ModifierGroupsEditor, cleanModifierGroups } from "./ModifierGroupsEdito
 
 const emptyForm: MenuItemInput = {
   name: "",
+  englishName: "",
   description: "",
+  englishDescription: "",
   category: "",
   price: "",
   available: true,
@@ -232,7 +234,9 @@ export function MenuItemsPage() {
     setEditingItem(item);
     setForm({
       name: item.name,
+      englishName: item.englishName ?? "",
       description: item.description,
+      englishDescription: item.englishDescription ?? "",
       category: item.category,
       price: item.price,
       available: item.available,
@@ -533,8 +537,10 @@ export function MenuItemsPage() {
         cell: ({ getValue }) => <span>{(getValue() as number) ?? 0}</span>,
       },
       { accessorKey: "name", header: t("menuItems.name"), size: 180 },
+      { accessorKey: "englishName", header: t("menuItems.englishName"), size: 180 },
       { accessorKey: "category", header: t("menuItems.category"), size: 150 },
       { accessorKey: "description", header: t("menuItems.description"), size: 280 },
+      { accessorKey: "englishDescription", header: t("menuItems.englishDescription"), size: 280 },
       {
         accessorKey: "price",
         header: t("menuItems.price"),
@@ -805,6 +811,7 @@ export function MenuItemsPage() {
                     <div className="menu-item-mobile-title">
                       <div>
                         <h2>{item.name}</h2>
+                        {item.englishName && <p className="menu-item-mobile-english-name">{item.englishName}</p>}
                         <p>{item.category || "—"}</p>
                       </div>
                       <span className="menu-item-mobile-price">{item.price}</span>
@@ -821,6 +828,7 @@ export function MenuItemsPage() {
                     )}
                   </div>
                   {item.description && <p className="menu-item-mobile-description">{item.description}</p>}
+                  {item.englishDescription && <p className="menu-item-mobile-english-description">{item.englishDescription}</p>}
                   <div className="menu-item-mobile-badges">
                     {!item.available ? (
                       <Badge variant="outline">{t("menuItems.availableNo")}</Badge>
@@ -973,13 +981,21 @@ export function MenuItemsPage() {
                 <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={t("menuItems.namePlaceholder")} />
               </div>
               <div className="grid gap-2">
-                <Label>{t("menuItems.category")}</Label>
-                <Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder={t("menuItems.categoryPlaceholder")} />
+                <Label>{t("menuItems.englishName")}</Label>
+                <Input value={form.englishName ?? ""} onChange={(e) => setForm({ ...form, englishName: e.target.value })} placeholder={t("menuItems.englishNamePlaceholder")} />
               </div>
+            </div>
+            <div className="grid gap-2">
+              <Label>{t("menuItems.category")}</Label>
+              <Input value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder={t("menuItems.categoryPlaceholder")} />
             </div>
             <div className="grid gap-2">
               <Label>{t("menuItems.description")}</Label>
               <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder={t("menuItems.descriptionPlaceholder")} />
+            </div>
+            <div className="grid gap-2">
+              <Label>{t("menuItems.englishDescription")}</Label>
+              <Input value={form.englishDescription ?? ""} onChange={(e) => setForm({ ...form, englishDescription: e.target.value })} placeholder={t("menuItems.englishDescriptionPlaceholder")} />
             </div>
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
               <div className="grid gap-2">

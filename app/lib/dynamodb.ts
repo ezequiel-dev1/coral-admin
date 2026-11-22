@@ -162,7 +162,11 @@ export async function fetchInvestments(): Promise<Investment[]> {
 export type MenuItem = {
   id: string;
   name: string;
+  /** English-language menu title. The existing `name` remains the Spanish title. */
+  englishName?: string;
   description: string;
+  /** English-language menu description. The existing `description` remains Spanish. */
+  englishDescription?: string;
   category: string;
   price: string;
   available: boolean;
@@ -224,11 +228,13 @@ export async function updateMenuItem(id: string, item: MenuItemInput): Promise<v
     new UpdateCommand({
       TableName: TABLES.menuItems,
       Key: { id },
-      UpdateExpression: "SET #n = :name, description = :description, category = :category, price = :price, available = :available, imageKey = :imageKey, notes = :notes, #o = :order, ingredientIds = :ingredientIds, modifierGroups = :modifierGroups, platformPrice = :platformPrice",
+      UpdateExpression: "SET #n = :name, englishName = :englishName, description = :description, englishDescription = :englishDescription, category = :category, price = :price, available = :available, imageKey = :imageKey, notes = :notes, #o = :order, ingredientIds = :ingredientIds, modifierGroups = :modifierGroups, platformPrice = :platformPrice",
       ExpressionAttributeNames: { "#n": "name", "#o": "order" },
       ExpressionAttributeValues: {
         ":name": item.name,
+        ":englishName": item.englishName?.trim() ?? "",
         ":description": item.description,
+        ":englishDescription": item.englishDescription?.trim() ?? "",
         ":category": item.category,
         ":price": item.price,
         ":available": item.available,

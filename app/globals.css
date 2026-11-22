@@ -70,8 +70,10 @@
   .menu-item-mobile-title{display:flex;min-width:0;flex:1;align-items:flex-start;justify-content:space-between;gap:8px}
   .menu-item-mobile-title h2{margin:0;font-size:17px;line-height:1.2}
   .menu-item-mobile-title p,.menu-item-mobile-description{margin:4px 0 0;color:var(--text-muted);font-size:13px}
+  .menu-item-mobile-english-name{font-style:italic}
   .menu-item-mobile-price{flex:0 0 auto;font-size:16px;font-weight:700}
   .menu-item-mobile-description{margin:0;line-height:1.4}
+  .menu-item-mobile-english-description{margin:0;color:var(--text-muted);font-size:13px;font-style:italic;line-height:1.4}
   .menu-item-mobile-badges{display:flex;flex-wrap:wrap;gap:7px}
   .menu-item-mobile-details{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:0}
   .menu-item-mobile-details div{min-width:0}
