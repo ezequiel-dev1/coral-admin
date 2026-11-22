@@ -33,9 +33,9 @@ type ApiResult = {
 };
 
 type RouteModule = {
-  GET?: (req: NextRequest, context: { params: Promise<{ orderId: string }> }) => Promise<Response>;
-  POST?: (req: NextRequest, context: { params: Promise<{ orderId: string }> }) => Promise<Response>;
-  PATCH?: (req: NextRequest, context: { params: Promise<{ orderId: string }> }) => Promise<Response>;
+  GET?: (req: NextRequest, context: { params: Promise<any> }) => Promise<Response>;
+  POST?: (req: NextRequest, context: { params: Promise<any> }) => Promise<Response>;
+  PATCH?: (req: NextRequest, context: { params: Promise<any> }) => Promise<Response>;
 };
 
 // Dynamic imports are literal so esbuild bundles them, but they only execute
@@ -63,12 +63,19 @@ const ROUTES: Record<string, () => Promise<RouteModule>> = {
   "GET /api/pos/v1/menu": () => import("../../app/api/pos/v1/menu/route"),
   "GET /api/pos/v1/orders": () => import("../../app/api/pos/v1/orders/route"),
   "POST /api/pos/v1/orders": () => import("../../app/api/pos/v1/orders/route"),
+  "GET /api/kitchen/v1/print-jobs": () => import("../../app/api/kitchen/v1/print-jobs/route"),
+  "POST /api/kitchen/v1/printer-status": () => import("../../app/api/kitchen/v1/printer-status/route"),
+  "GET /api/pos/v1/kitchen-printer-status": () => import("../../app/api/pos/v1/kitchen-printer-status/route"),
 };
 
 const DYNAMIC_ROUTES: Array<{ method: string; pattern: RegExp; load: () => Promise<RouteModule> }> = [
   { method: "GET", pattern: /^\/api\/pos\/v1\/orders\/([^/]+)$/, load: () => import("../../app/api/pos/v1/orders/[orderId]/route") },
   { method: "PATCH", pattern: /^\/api\/pos\/v1\/orders\/([^/]+)$/, load: () => import("../../app/api/pos/v1/orders/[orderId]/route") },
   { method: "POST", pattern: /^\/api\/pos\/v1\/orders\/([^/]+)\/cancel$/, load: () => import("../../app/api/pos/v1/orders/[orderId]/cancel/route") },
+  { method: "POST", pattern: /^\/api\/pos\/v1\/orders\/([^/]+)\/print-jobs$/, load: () => import("../../app/api/pos/v1/orders/[orderId]/print-jobs/route") },
+  { method: "POST", pattern: /^\/api\/kitchen\/v1\/print-jobs\/([^/]+)\/claim$/, load: () => import("../../app/api/kitchen/v1/print-jobs/[jobId]/claim/route") },
+  { method: "POST", pattern: /^\/api\/kitchen\/v1\/print-jobs\/([^/]+)\/complete$/, load: () => import("../../app/api/kitchen/v1/print-jobs/[jobId]/complete/route") },
+  { method: "POST", pattern: /^\/api\/kitchen\/v1\/print-jobs\/([^/]+)\/fail$/, load: () => import("../../app/api/kitchen/v1/print-jobs/[jobId]/fail/route") },
 ];
 
 const secrets = new SecretsManagerClient({});
@@ -218,7 +225,7 @@ export async function handler(event: ApiEvent): Promise<ApiResult> {
     });
 
     const res = orderId && (method === "GET" || method === "PATCH" || method === "POST")
-      ? await (fn as (request: NextRequest, context: { params: Promise<{ orderId: string }> }) => Promise<Response>)(req, { params: Promise.resolve({ orderId }) })
+      ? await (fn as (request: NextRequest, context: { params: Promise<Record<string, string>> }) => Promise<Response>)(req, { params: Promise.resolve((path.startsWith("/api/kitchen/") ? { jobId: orderId } : { orderId }) as Record<string, string>) })
       : await (fn as (request: NextRequest) => Promise<Response>)(req);
     return {
       statusCode: res.status,

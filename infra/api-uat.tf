@@ -92,6 +92,24 @@ resource "aws_iam_role_policy" "api_uat" {
         Resource = aws_dynamodb_table.orders.arn
       },
       {
+        Sid      = "KitchenPrintJobs"
+        Effect   = "Allow"
+        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:Scan"]
+        Resource = aws_dynamodb_table.kitchen_print_jobs.arn
+      },
+      {
+        Sid      = "KitchenPrinterStatus"
+        Effect   = "Allow"
+        Action   = ["dynamodb:GetItem", "dynamodb:PutItem"]
+        Resource = aws_dynamodb_table.kitchen_printer_status.arn
+      },
+      {
+        Sid      = "PublishKitchenPrintEvents"
+        Effect   = "Allow"
+        Action   = ["appsync:EventPublish"]
+        Resource = aws_cloudformation_stack.kitchen_print_uat.outputs["arn"]
+      },
+      {
         Sid      = "InviteUsers"
         Effect   = "Allow"
         Action   = ["cognito-idp:AdminCreateUser", "cognito-idp:AdminAddUserToGroup"]
@@ -151,6 +169,8 @@ resource "aws_lambda_function" "api_uat" {
       UBER_EATS_CREDENTIALS_SECRET_ID = data.aws_secretsmanager_secret.uber_eats_credentials.name
       SITE_URL                        = "https://${var.uat_domain_name}"
       COGNITO_USER_POOL_ID            = aws_cognito_user_pool.main.id
+      KITCHEN_EVENTS_HTTP_URL         = aws_cloudformation_stack.kitchen_print_uat.outputs["httpUrl"]
+      KITCHEN_EVENTS_REGION           = var.aws_region
     }
   }
 

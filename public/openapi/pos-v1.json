@@ -76,6 +76,33 @@
           "409": { "$ref": "#/components/responses/Conflict" }
         }
       }
+    },
+    "/api/pos/v1/orders/{orderId}/print-jobs": {
+      "post": {
+        "tags": ["Kitchen printing"],
+        "summary": "Request a durable kitchen print",
+        "parameters": [{ "$ref": "#/components/parameters/OrderId" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["clientRequestId", "destination"], "properties": { "clientRequestId": { "type": "string", "format": "uuid" }, "destination": { "type": "string", "enum": ["kitchen"] } } } } } },
+        "responses": { "201": { "description": "Print job created" }, "200": { "description": "Existing idempotent print job" }, "404": { "$ref": "#/components/responses/NotFound" } }
+      }
+    },
+    "/api/kitchen/v1/print-jobs": {
+      "get": { "tags": ["Kitchen printing"], "summary": "List pending or expired-lease jobs", "parameters": [{ "name": "status", "in": "query", "schema": { "type": "string", "enum": ["pending"] } }], "responses": { "200": { "description": "Claimable jobs" }, "403": { "$ref": "#/components/responses/Forbidden" } } }
+    },
+    "/api/kitchen/v1/print-jobs/{jobId}/claim": {
+      "post": { "tags": ["Kitchen printing"], "summary": "Lease a job and obtain its canonical order", "responses": { "200": { "description": "Claimed job and order" }, "409": { "$ref": "#/components/responses/Conflict" } } }
+    },
+    "/api/kitchen/v1/print-jobs/{jobId}/complete": {
+      "post": { "tags": ["Kitchen printing"], "summary": "Mark the caller's active claim printed", "responses": { "200": { "description": "Completed" }, "409": { "$ref": "#/components/responses/Conflict" } } }
+    },
+    "/api/kitchen/v1/print-jobs/{jobId}/fail": {
+      "post": { "tags": ["Kitchen printing"], "summary": "Release the caller's active claim", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["reason"], "properties": { "reason": { "type": "string", "pattern": "^[a-zA-Z0-9-]{1,80}$" } } } } } }, "responses": { "200": { "description": "Released" }, "409": { "$ref": "#/components/responses/Conflict" } } }
+    },
+    "/api/kitchen/v1/printer-status": {
+      "post": { "tags": ["Kitchen printing"], "summary": "Record the kitchen bridge heartbeat", "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["bridgeState", "printerState"], "properties": { "bridgeState": { "type": "string", "enum": ["active", "paused"] }, "printerState": { "type": "string", "enum": ["ready", "reconnecting", "error", "paused"] }, "printerName": { "type": "string", "maxLength": 80 }, "errorCode": { "type": "string", "maxLength": 80 } } } } } }, "responses": { "200": { "description": "Heartbeat recorded" } } }
+    },
+    "/api/pos/v1/kitchen-printer-status": {
+      "get": { "tags": ["Kitchen printing"], "summary": "Get server-calculated kitchen printer availability", "responses": { "200": { "description": "Printer health for the caller location" } } }
     }
   },
   "components": {

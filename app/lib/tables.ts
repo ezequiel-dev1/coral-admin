@@ -29,4 +29,6 @@ export const TABLES = {
   reservations: `${prefix}reservations`,
   employees: `${prefix}employees`,
   payrollReceipts: `${prefix}payroll-receipts`,
+  kitchenPrintJobs: `${prefix}kitchen-print-jobs`,
+  kitchenPrinterStatus: `${prefix}kitchen-printer-status`,
 } as const;

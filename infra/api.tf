@@ -31,22 +31,29 @@ locals {
   # - webhook: public, protected by Stripe's signature check inside the handler
   # - POST feedback: public, customers rate their order from the Stripe return page
   api_routes = {
-    "POST /api/webhook"                        = false
-    "POST /api/uber-eats/webhook"              = false
-    "POST /api/feedback"                       = false
-    "GET /api/feedback"                        = true
-    "GET /api/card-present"                    = true
-    "POST /api/checkout"                       = true
-    "POST /api/checkout/cancel"                = true
-    "POST /api/invitations"                    = true
-    "GET /api/pos/v1/menu"                     = true
-    "GET /api/pos/v1/orders"                   = true
-    "POST /api/pos/v1/orders"                  = true
-    "GET /api/pos/v1/orders/{orderId}"         = true
-    "PATCH /api/pos/v1/orders/{orderId}"       = true
-    "POST /api/pos/v1/orders/{orderId}/cancel" = true
-    "GET /api/self-checkout"                   = false
-    "POST /api/self-checkout"                  = false
+    "POST /api/webhook"                                = false
+    "POST /api/uber-eats/webhook"                      = false
+    "POST /api/feedback"                               = false
+    "GET /api/feedback"                                = true
+    "GET /api/card-present"                            = true
+    "POST /api/checkout"                               = true
+    "POST /api/checkout/cancel"                        = true
+    "POST /api/invitations"                            = true
+    "GET /api/pos/v1/menu"                             = true
+    "GET /api/pos/v1/orders"                           = true
+    "POST /api/pos/v1/orders"                          = true
+    "GET /api/pos/v1/orders/{orderId}"                 = true
+    "PATCH /api/pos/v1/orders/{orderId}"               = true
+    "POST /api/pos/v1/orders/{orderId}/cancel"         = true
+    "POST /api/pos/v1/orders/{orderId}/print-jobs"     = true
+    "GET /api/kitchen/v1/print-jobs"                   = true
+    "POST /api/kitchen/v1/print-jobs/{jobId}/claim"    = true
+    "POST /api/kitchen/v1/print-jobs/{jobId}/complete" = true
+    "POST /api/kitchen/v1/print-jobs/{jobId}/fail"     = true
+    "POST /api/kitchen/v1/printer-status"              = true
+    "GET /api/pos/v1/kitchen-printer-status"           = true
+    "GET /api/self-checkout"                           = false
+    "POST /api/self-checkout"                          = false
   }
 }
 
@@ -101,6 +108,24 @@ resource "aws_iam_role_policy" "api" {
         Effect   = "Allow"
         Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:Scan"]
         Resource = aws_dynamodb_table.production["orders"].arn
+      },
+      {
+        Sid      = "KitchenPrintJobs"
+        Effect   = "Allow"
+        Action   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:Scan"]
+        Resource = aws_dynamodb_table.production["kitchen-print-jobs"].arn
+      },
+      {
+        Sid      = "KitchenPrinterStatus"
+        Effect   = "Allow"
+        Action   = ["dynamodb:GetItem", "dynamodb:PutItem"]
+        Resource = aws_dynamodb_table.production["kitchen-printer-status"].arn
+      },
+      {
+        Sid      = "PublishKitchenPrintEvents"
+        Effect   = "Allow"
+        Action   = ["appsync:EventPublish"]
+        Resource = aws_cloudformation_stack.kitchen_print.outputs["arn"]
       },
       {
         Sid    = "PosMenuTables"
@@ -158,6 +183,8 @@ resource "aws_lambda_function" "api" {
       UBER_EATS_CREDENTIALS_SECRET_ID = data.aws_secretsmanager_secret.uber_eats_credentials.name
       SITE_URL                        = "https://${var.domain_name}"
       COGNITO_USER_POOL_ID            = aws_cognito_user_pool.main.id
+      KITCHEN_EVENTS_HTTP_URL         = aws_cloudformation_stack.kitchen_print.outputs["httpUrl"]
+      KITCHEN_EVENTS_REGION           = var.aws_region
     }
   }
 

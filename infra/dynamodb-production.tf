@@ -6,17 +6,19 @@
 
 locals {
   production_tables = {
-    "shared-loans"     = { hash_key = "id", range_key = null }
-    "investments"      = { hash_key = "id", range_key = null }
-    "ledger"           = { hash_key = "id", range_key = null }
-    "menu-items"       = { hash_key = "id", range_key = null }
-    "menu-ingredients" = { hash_key = "id", range_key = null }
-    "orders"           = { hash_key = "id", range_key = null }
-    "feedback"         = { hash_key = "id", range_key = null }
-    "reservations"     = { hash_key = "id", range_key = null }
-    "employees"        = { hash_key = "id", range_key = null }
-    "payroll-receipts" = { hash_key = "id", range_key = null }
-    "loan-charges"     = { hash_key = "loanId", range_key = "chargeId" }
+    "shared-loans"       = { hash_key = "id", range_key = null }
+    "investments"        = { hash_key = "id", range_key = null }
+    "ledger"             = { hash_key = "id", range_key = null }
+    "menu-items"         = { hash_key = "id", range_key = null }
+    "menu-ingredients"   = { hash_key = "id", range_key = null }
+    "orders"             = { hash_key = "id", range_key = null }
+    "kitchen-print-jobs" = { hash_key = "idempotencyKey", range_key = null }
+    "kitchen-printer-status" = { hash_key = "locationId", range_key = null }
+    "feedback"           = { hash_key = "id", range_key = null }
+    "reservations"       = { hash_key = "id", range_key = null }
+    "employees"          = { hash_key = "id", range_key = null }
+    "payroll-receipts"   = { hash_key = "id", range_key = null }
+    "loan-charges"       = { hash_key = "loanId", range_key = "chargeId" }
   }
 }
 

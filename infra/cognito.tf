@@ -70,6 +70,14 @@ resource "aws_cognito_user_pool" "main" {
   }
 }
 
+# Kitchen tablets receive a dedicated, least-privilege identity. Enrollment
+# assigns this group; it is deliberately not a staff/administrator role.
+resource "aws_cognito_user_group" "kitchen_printer" {
+  user_pool_id = aws_cognito_user_pool.main.id
+  name         = "KitchenPrinter"
+  description  = "Dedicated kitchen printer device principals"
+}
+
 # --- Cognito User Pool Domain (hosted UI) ---
 
 resource "aws_cognito_user_pool_domain" "main" {
