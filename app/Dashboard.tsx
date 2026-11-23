@@ -13,6 +13,7 @@ import { OrdersPage } from "./pages/OrdersPage";
 import { ReservationsPage } from "./pages/ReservationsPage";
 import { EmployeesPage } from "./pages/EmployeesPage";
 import { UberTestPage } from "./pages/UberTestPage";
+import { SalesReportPage } from "./pages/SalesReportPage";
 import { APP_ENV } from "./lib/tables";
 import { authedFetch } from "./lib/apiFetch";
 import { OfflineSupport } from "./OfflineSupport";
@@ -33,6 +34,7 @@ import {
   PanelLeftOpen,
   FlaskConical,
   Settings,
+  BarChart3,
 } from "lucide-react";
 
 function getInitials(name: string): string {
@@ -48,7 +50,7 @@ export function Dashboard() {
   const { user, logout } = useAuth();
   const { lang, setLang, t } = useTranslation();
 
-  const validTabs = ["Overview", "Orders", "Reservations", "Checkout", "Menu Items", "Menu Ingredients", "Employees", "Uber Test"];
+  const validTabs = ["Overview", "Orders", "Reservations", "Checkout", "Reports", "Menu Items", "Menu Ingredients", "Employees", "Uber Test"];
 
   function getTabFromHash(): string {
     if (typeof window === "undefined") return "Overview";
@@ -185,6 +187,7 @@ export function Dashboard() {
     { key: "Orders", staff: true, label: t("nav.orders"), icon: ClipboardList, public: false },
     { key: "Reservations", label: t("nav.reservations"), icon: CalendarDays, public: false },
     { key: "Checkout", staff: true, label: t("nav.checkout"), icon: ShoppingCart, public: false },
+    { key: "Reports", manager: true, label: t("nav.reports"), icon: BarChart3, public: false },
     { key: "Menu Items", administrator: true, label: t("nav.menuItems"), icon: UtensilsCrossed, public: false },
     { key: "Menu Ingredients", administrator: true, label: t("nav.menuIngredients"), icon: Carrot, public: false },
     { key: "Employees", administrator: true, label: t("nav.employees"), icon: Users, public: false },
@@ -192,7 +195,7 @@ export function Dashboard() {
   ];
 
   const navItems = allNavItems.filter((item) =>
-    item.public || (item.administrator && isAdministrator) || (item.overlord && isOverlord) || (!item.administrator && !item.overlord && (isPrivileged || (item.staff && isStaff)))
+    item.public || (item.administrator && isAdministrator) || (item.overlord && isOverlord) || (item.manager && (isPrivileged || (user?.groups?.includes("Manager") ?? false))) || (!item.administrator && !item.overlord && !item.manager && (isPrivileged || (item.staff && isStaff)))
   );
 
   // If the requested tab isn't allowed for this user (e.g. default "Overview"), fall back to their first one (Orders for managers).
@@ -284,6 +287,7 @@ export function Dashboard() {
           {isStaff && activeTab === "Orders" && <OrdersPage />}
           {isPrivileged && activeTab === "Reservations" && <ReservationsPage />}
           {isStaff && activeTab === "Checkout" && <CheckoutPage />}
+          {(isPrivileged || user?.groups?.includes("Manager")) && activeTab === "Reports" && <SalesReportPage />}
           {isAdministrator && activeTab === "Menu Items" && <MenuItemsPage />}
           {isAdministrator && activeTab === "Menu Ingredients" && <MenuIngredientsPage />}
           {isAdministrator && activeTab === "Employees" && <EmployeesPage />}
