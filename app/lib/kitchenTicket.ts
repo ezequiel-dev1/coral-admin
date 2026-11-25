@@ -1,7 +1,8 @@
 import { PRINT_COLUMNS, toPrinterText, type PrintJob, type PrintLine } from "./printAgent";
-import type { Order, OrderLineItem } from "./dynamodb";
+import type { MenuItem, Order, OrderLineItem } from "./dynamodb";
 
 type T = (key: string, vars?: Record<string, string>) => string;
+type KitchenMenuItem = Pick<MenuItem, "category" | "description">;
 
 const STARS = "*".repeat(PRINT_COLUMNS);
 const DOTS = ".".repeat(PRINT_COLUMNS);
@@ -58,14 +59,15 @@ function sectionHeading(title: string): PrintLine {
  * Builds the kitchen order ticket (what the cooks prepare), grouped by menu
  * category the way a paper comanda is grouped by course. Pure: no I/O.
  *
- * @param categoryOf resolves a menu item id to its category (unknown -> "")
+ * @param menuItemOf resolves a menu item id to its kitchen ticket metadata.
  */
 export function buildKitchenTicket(
   order: Order,
-  categoryOf: (menuItemId: string) => string,
+  menuItemOf: (menuItemId: string) => KitchenMenuItem | undefined,
   t: T,
   tableText: string,
   now: Date = new Date(),
+  includeCopy = true,
 ): PrintJob {
   const takeout = order.serviceType === "takeout";
   const lines: (string | PrintLine)[] = [];
@@ -83,12 +85,16 @@ export function buildKitchenTicket(
   }
   lines.push(field(t("kitchenTicket.server").toUpperCase(), order.server || "-"));
   lines.push(field(t("kitchenTicket.date").toUpperCase(), formatDate(now)));
+  if (includeCopy) {
+    lines.push(field(t("kitchenTicket.copy").toUpperCase(), order.ticketPrintCount && order.ticketPrintCount > 1 ? String(order.ticketPrintCount - 1) : t("kitchenTicket.original")));
+  }
   lines.push(STARS);
 
   // ---- items grouped by category (order of first appearance) ----------------
   const groups = new Map<string, OrderLineItem[]>();
   for (const line of order.items) {
-    const category = categoryOf(line.menuItemId) || t("kitchenTicket.otherCategory");
+    const menuItem = menuItemOf(line.menuItemId);
+    const category = menuItem?.category || t("kitchenTicket.otherCategory");
     const list = groups.get(category) ?? [];
     list.push(line);
     groups.set(category, list);
@@ -103,6 +109,15 @@ export function buildKitchenTicket(
       const [first, ...rest] = wrap(toPrinterText(item.name), textWidth);
       lines.push({ text: `${`${item.quantity}x`.padStart(3)}  ${first ?? ""}`, bold: true });
       for (const r of rest) lines.push({ text: INDENT + r, bold: true });
+
+      // Combo descriptions specify their composition (for example, both tacos
+      // included in a two-taco combo), which is essential prep information.
+      const description = menuItemOf(item.menuItemId)?.description.trim() ?? "";
+      if (category.trim().toLocaleLowerCase() === "combos" && description) {
+        for (const [i, part] of wrap(toPrinterText(description), textWidth - 2).entries()) {
+          lines.push(`${INDENT}${i === 0 ? "> " : "  "}${part}`);
+        }
+      }
 
       // Chosen options: "* Medium rare"
       for (const m of item.modifiers ?? []) {

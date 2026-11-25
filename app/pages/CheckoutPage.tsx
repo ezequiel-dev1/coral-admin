@@ -43,6 +43,7 @@ import {
   updateOrderStatus,
   deleteOrder,
   getOrder,
+  claimOrderTicketPrint,
   fetchOpenChecks,
   saveCashReconciliation,
   fetchCashReconciliations,
@@ -268,8 +269,9 @@ export function CheckoutPage() {
     try {
       const order = await getOrder(orderId);
       if (!order) throw new Error("Order not found");
+      const printedOrder = await claimOrderTicketPrint(order.id);
       const jobs = buildSaleTickets(
-        order,
+        printedOrder,
         t,
         { cashier: user?.name || user?.email || "", exchangeRate: rate?.rate },
         openDrawer

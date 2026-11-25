@@ -181,7 +181,7 @@ export function PrintableMenu({
               <BrandHeader />
               <div className="pm-pagehead">
                 <Flourish />
-                <h1 className="pm-pagetitle">MENÚ</h1>
+                <h1 className="pm-pagetitle">MENU</h1>
                 <Flourish flip />
               </div>
 

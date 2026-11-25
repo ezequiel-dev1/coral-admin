@@ -287,8 +287,89 @@
 .invite-section{display:grid;gap:9px;margin-top:10px;border-top:1px solid var(--line);padding-top:14px}.invite-section strong{font-size:14px}.invite-section input[type=email]{height:36px;border:1px solid var(--line);border-radius:8px;background:transparent;padding:0 10px;color:var(--ink)}.invite-groups{display:flex;gap:10px;font-size:12px}.invite-groups label{display:flex;gap:4px;align-items:center}.invite-section small{font-size:12px;color:var(--text-muted)}
 
 /* Orders + marketplace dispatch board */
-.orders-workspace{display:grid;grid-template-columns:minmax(0,1fr) minmax(440px,1fr);gap:24px;align-items:start}.orders-list-panel{min-width:0}.uber-kanban{min-width:0;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:0 2px 10px #1e28410a}.uber-kanban-head{display:flex;align-items:flex-start;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:14px;margin-bottom:15px}.uber-brand{font-size:12px;font-weight:700;color:#06c167;letter-spacing:-.2px}.uber-brand span{color:#111}.uber-kanban h2{font:600 23px "Mounties",Georgia,serif;margin:3px 0 2px}.uber-kanban-head p{font-size:12px;color:var(--text-muted);margin:0}.uber-live{display:flex;align-items:center;gap:5px;border-radius:999px;background:#eaf7ef;color:#247044;padding:5px 8px;font-size:10px;font-weight:700}.uber-live i{width:6px;height:6px;border-radius:50%;background:#29a965}.uber-columns{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;overflow-x:auto}.uber-column{min-width:130px;border-radius:10px;padding:8px;background:var(--surface-3);min-height:230px}.uber-column header{display:flex;align-items:center;justify-content:space-between;gap:5px;padding:1px 2px 9px;color:var(--text-muted);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px}.uber-column header b{display:grid;place-items:center;border-radius:999px;background:var(--surface);color:var(--ink);font-size:10px;width:19px;height:19px}.uber-column-new header{color:#a56d1e}.uber-column-ready header{color:#3c7c55}.uber-cards{display:grid;gap:8px}.uber-card{background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:0 1px 3px #0000000a;overflow:hidden}.uber-card-main{display:block;width:100%;border:0;background:transparent;text-align:left;padding:10px;cursor:pointer}.uber-card-main:hover{background:var(--row-hover)}.uber-card-id{display:flex;gap:4px;align-items:baseline;flex-wrap:wrap}.uber-card-id strong{font-size:12px}.uber-card-id span{font-size:10px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}.uber-card p{font-size:10px;margin:7px 0 4px;color:var(--ink)}.uber-card small{font-size:9px;color:#b16a45}.uber-ready-action{width:100%;display:flex;align-items:center;justify-content:space-between;border:0;border-top:1px solid var(--line);background:#f4fbf7;color:#347854;padding:7px 9px;font-size:10px;font-weight:700;cursor:pointer}.uber-ready-action:hover{background:#e8f6ed}.uber-ready-action:disabled{opacity:.55;cursor:wait}.uber-pickup{display:flex;gap:5px;align-items:center;border-top:1px solid var(--line);padding:7px 9px;color:#3c7c55;font-size:10px;font-weight:700}.uber-empty{min-height:135px;border:1px dashed var(--line);border-radius:7px;display:grid;place-items:center;color:var(--text-muted);font-size:10px}
-@media(max-width:1250px){.orders-workspace{grid-template-columns:1fr}.uber-kanban{order:-1}.uber-columns{grid-template-columns:repeat(3,minmax(180px,1fr))}}@media(max-width:700px){.orders-workspace{gap:16px}.uber-kanban{padding:14px}.uber-columns{grid-template-columns:repeat(3,minmax(155px,1fr))}}
+.orders-workspace{display:grid;grid-template-columns:minmax(0,1fr) minmax(360px,.9fr);gap:24px;align-items:start}.orders-list-panel{min-width:0}.order-details-panel{position:sticky;top:20px;display:grid;gap:16px;min-width:0;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px;box-shadow:0 2px 10px #1e28410a}.order-details-empty{min-height:230px;align-content:center;text-align:center;color:var(--text-muted)}.order-details-empty h2{color:var(--ink);font:600 23px "Mounties",Georgia,serif}.order-details-empty p{margin:0;font-size:14px}.order-details-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding-bottom:14px}.order-details-head .eyebrow{margin-bottom:5px}.order-details-head h2{font:600 25px "Mounties",Georgia,serif;margin:0}.order-details-meta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:0}.order-details-meta div{display:grid;gap:3px}.order-details-meta dt{color:var(--text-muted);font-size:11px}.order-details-meta dd{margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:600}.order-details-items{display:grid;gap:10px;max-height:45vh;overflow-y:auto;padding-right:3px}.order-details-item{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:9px;align-items:start;font-size:13px}.order-details-item>span{font-weight:700}.order-details-item p{margin:0;font-weight:600}.order-details-item small{display:block;margin-top:2px;color:var(--text-muted);font-size:11px}.order-details-item b{font-size:12px;white-space:nowrap}.order-details-notes{margin:0;border-radius:8px;background:var(--surface-muted);padding:10px;font-size:12px;color:var(--text-muted)}.order-details-total{display:flex;justify-content:space-between;border-top:1px solid var(--line);padding-top:14px;font-size:16px}.uber-kanban{grid-column:1 / -1;min-width:0;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:0 2px 10px #1e28410a}.uber-kanban-head{display:flex;align-items:flex-start;justify-content:space-between;border-bottom:1px solid var(--line);padding-bottom:14px;margin-bottom:15px}.uber-brand{font-size:12px;font-weight:700;color:#06c167;letter-spacing:-.2px}.uber-brand span{color:#111}.uber-kanban h2{font:600 23px "Mounties",Georgia,serif;margin:3px 0 2px}.uber-kanban-head p{font-size:12px;color:var(--text-muted);margin:0}.uber-live{display:flex;align-items:center;gap:5px;border-radius:999px;background:#eaf7ef;color:#247044;padding:5px 8px;font-size:10px;font-weight:700}.uber-live i{width:6px;height:6px;border-radius:50%;background:#29a965}.uber-columns{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;overflow-x:auto}.uber-column{min-width:130px;border-radius:10px;padding:8px;background:var(--surface-3);min-height:230px}.uber-column header{display:flex;align-items:center;justify-content:space-between;gap:5px;padding:1px 2px 9px;color:var(--text-muted);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.4px}.uber-column header b{display:grid;place-items:center;border-radius:999px;background:var(--surface);color:var(--ink);font-size:10px;width:19px;height:19px}.uber-column-new header{color:#a56d1e}.uber-column-ready header{color:#3c7c55}.uber-cards{display:grid;gap:8px}.uber-card{background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:0 1px 3px #0000000a;overflow:hidden}.uber-card-main{display:block;width:100%;border:0;background:transparent;text-align:left;padding:10px;cursor:pointer}.uber-card-main:hover{background:var(--row-hover)}.uber-card-id{display:flex;gap:4px;align-items:baseline;flex-wrap:wrap}.uber-card-id strong{font-size:12px}.uber-card-id span{font-size:10px;color:var(--text-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}.uber-card p{font-size:10px;margin:7px 0 4px;color:var(--ink)}.uber-card small{font-size:9px;color:#b16a45}.uber-ready-action{width:100%;display:flex;align-items:center;justify-content:space-between;border:0;border-top:1px solid var(--line);background:#f4fbf7;color:#347854;padding:7px 9px;font-size:10px;font-weight:700;cursor:pointer}.uber-ready-action:hover{background:#e8f6ed}.uber-ready-action:disabled{opacity:.55;cursor:wait}.uber-pickup{display:flex;gap:5px;align-items:center;border-top:1px solid var(--line);padding:7px 9px;color:#3c7c55;font-size:10px;font-weight:700}.uber-empty{min-height:135px;border:1px dashed var(--line);border-radius:7px;display:grid;place-items:center;color:var(--text-muted);font-size:10px}
+@media(max-width:1100px){.orders-workspace{grid-template-columns:1fr}.order-details-panel{position:static;order:2}.uber-kanban{order:3}.uber-columns{grid-template-columns:repeat(3,minmax(180px,1fr))}}@media(max-width:700px){.orders-workspace{gap:16px}.order-details-panel{padding:16px}.order-details-meta{grid-template-columns:repeat(2,minmax(0,1fr))}.uber-kanban{padding:14px}.uber-columns{grid-template-columns:repeat(3,minmax(155px,1fr))}}
+
+/* Compact order cards on phones and tablets: details stay below the grid. */
+.order-list-card-caret{display:none}
+@media(max-width:1100px){
+  .order-list{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+  .order-list-card{aspect-ratio:1 / .9;min-height:142px;padding:14px;transition:border-color .15s ease,box-shadow .15s ease}
+  .order-list-card.is-selected{border:2px solid #E48664;box-shadow:0 0 0 2px #e4866426}
+  .order-list-card-button{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"summary caret" "status total";align-content:space-between;gap:14px 8px;height:100%}
+  .order-list-card-summary{grid-area:summary;min-width:0;align-self:start}
+  .order-list-card-summary>p:first-child{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-height:1.35}
+  .order-list-card-meta{margin:5px 0 0}.order-list-card-extra{display:none}
+  .order-list-card-status{grid-area:status;justify-self:start;align-self:end}
+  .order-list-card-total{grid-area:total;width:auto;align-self:end;font-size:15px}
+  .order-list-card-caret{display:block;grid-area:caret;align-self:start;color:#E48664;transition:transform .15s ease}
+  .order-list-card.is-selected .order-list-card-caret{transform:rotate(180deg)}
+}
+@media(max-width:700px){
+  .order-list{gap:10px}
+  .order-list-card{min-height:132px;padding:12px}
+  .order-list-card-button{gap:12px 6px}
+  .order-details-panel{position:relative}
+  .order-details-print{position:absolute;top:14px;right:14px;width:36px;height:36px;padding:0}
+  .order-details-print span{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+  .order-details-head{padding-right:42px}
+}
+
+/* An expanded order stays in the card flow, directly above its details. */
+.orders-workspace{display:block}
+.orders-list-panel>.order-list{margin-top:0}
+.order-list{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+.order-list-card{aspect-ratio:2 / 1;min-height:108px;padding:14px;cursor:pointer;transition:border-color .15s ease,box-shadow .15s ease}
+.order-list-card.is-selected{grid-column:1 / -1;aspect-ratio:auto;min-height:118px;border:2px solid #E48664;box-shadow:0 0 0 2px #e4866426;cursor:default}
+.order-list-card-button{display:grid;grid-template-columns:minmax(0,1fr) auto;grid-template-areas:"summary summary" "status total";align-content:space-between;gap:14px 8px;height:100%}
+.order-list-card-summary{grid-area:summary;min-width:0;align-self:start}
+.order-list-card-title{font:600 20px/1.1 "Mounties",Georgia,serif;text-transform:uppercase;letter-spacing:-.2px}
+.order-list-card-summary>p:first-child{display:-webkit-box;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-height:1.35}
+.order-list-card-meta{margin:5px 0 0}.order-list-card-extra{display:none}
+.order-list-card-status{grid-area:status;justify-self:start;align-self:end}
+.order-list-card-total{grid-area:total;width:auto;align-self:end;font-size:15px}
+.order-details-panel{position:static;grid-column:1 / -1;margin:0;padding:20px}
+.uber-kanban{margin-top:24px}
+@media(max-width:700px){
+  .order-list{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  .order-list-card{aspect-ratio:1.6 / 1;min-height:112px;padding:12px}
+  .order-list-card-title{font-size:17px}
+  .order-list-card.is-selected{min-height:116px}
+  .order-list-card-button{gap:12px 6px}
+  .order-details-panel{padding:16px}
+}
+
+/* The selected card owns its details, rather than creating a separate row. */
+.order-list-card.is-selected{display:block;padding:14px}
+.order-list-card.is-selected .order-list-card-button{min-height:88px;height:auto}
+.order-details-embedded{display:grid;grid-column:auto;gap:16px;width:100%;margin:14px 0 0;padding:16px 0 0;border:0;border-top:1px solid var(--line);border-radius:0;box-shadow:none;background:transparent;overflow:hidden;animation:order-details-reveal .28s cubic-bezier(.2,.8,.2,1) both}
+.order-details-embedded .order-details-head{padding-bottom:14px}
+@keyframes order-details-reveal{from{max-height:0;opacity:0;transform:translateY(-6px)}to{max-height:1200px;opacity:1;transform:translateY(0)}}
+@media(prefers-reduced-motion:reduce){.order-list-card,.order-details-embedded{animation:none!important;transition:none!important}}
+@media(max-width:700px){
+  .order-list-card.is-selected{padding:12px}
+  .order-details-embedded{margin-top:12px;padding-top:14px}
+  .order-details-embedded .order-details-print{top:14px;right:0}
+}
+
+/* Keep the active card at the top only on iPad mini-sized screens and below. */
+@media(max-width:1024px){.order-list-card.is-selected{order:-1}}
+
+/* Desktop uses a dedicated details pane; compact cards stay short, one per row. */
+.order-details-panel.order-details-desktop{display:none!important}
+@media(min-width:1101px){
+  .content:has(.orders-workspace){position:relative}
+  .new-order-button{position:absolute;top:31px;right:30px}
+  .orders-workspace{display:grid;grid-template-columns:minmax(360px,.72fr) minmax(440px,1.28fr);gap:24px;align-items:start}
+  .orders-list-panel{min-width:0}
+  .order-list{grid-template-columns:1fr;gap:10px}
+  .order-list-card,.order-list-card.is-selected{grid-column:auto;aspect-ratio:auto;min-height:0;padding:14px}
+  .order-list-card.is-selected{display:block}
+  .order-list-card-button,.order-list-card.is-selected .order-list-card-button{min-height:0;height:auto;grid-template-areas:"summary summary" "status total";gap:10px 8px}
+  .order-details-embedded{display:none}
+  .order-details-panel.order-details-desktop{display:grid!important;position:sticky;top:20px;grid-column:2;grid-row:1;align-self:start;min-height:230px;margin-top:0!important}
+  .uber-kanban{grid-column:1 / -1;grid-row:2}
+}
 .uber-columns{grid-template-columns:repeat(4,minmax(0,1fr))}
 
 /* Uber Eats UAT test order builder */

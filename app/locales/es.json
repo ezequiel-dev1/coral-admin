@@ -49,7 +49,7 @@
     "tipRate": "{{rate}} de ventas",
     "dailySales": "Ventas diarias",
     "dailySalesHint": "Órdenes completadas durante el periodo seleccionado",
-    "paymentMix": "Métodos de pago",
+    "paymentMix": "Metodos de pago",
     "paymentMixHint": "Ventas por método de pago",
     "topItems": "Platillos más vendidos",
     "topItemsHint": "Ordenados por ventas en el periodo seleccionado",
@@ -90,6 +90,8 @@
       "cancelled": "Cancelada"
     },
     "date": "Fecha",
+    "copy": "Copia",
+    "original": "Original",
     "currency": "Moneda",
     "exchangeRate": "T.C.",
     "payment": "Tipo",
@@ -122,6 +124,8 @@
     "table": "Mesa",
     "server": "Mesero",
     "date": "Fecha",
+    "copy": "Copia",
+    "original": "Original",
     "customer": "Nombre",
     "takeout": "Para llevar",
     "notes": "Notas de la orden",
@@ -181,7 +185,7 @@
     "newReservationOpened": "Panel de nueva reservación abierto",
     "viewAllReservations": "Ver todas las reservaciones →",
     "kitchen": "COCINA",
-    "ordersInProgress": "Órdenes en progreso",
+    "ordersInProgress": "Ordenes en progreso",
     "openOrderBoard": "Abrir tablero de órdenes",
     "orderBeingPrepared": "La orden de la mesa {{table}} se está preparando",
     "payments": "PAGOS",
@@ -354,7 +358,7 @@
     "confirmDelete": "¿Estás seguro de que deseas eliminar este pedido?"
   },
   "menuItems": {
-    "title": "Menú",
+    "title": "Menu",
     "subtitle": "Administra los platillos que se sirven en el restaurante",
     "records": "Platillos",
     "image": "Imagen",
@@ -450,7 +454,7 @@
     "addOption": "Agregar opción"
   },
   "menuIngredients": {
-    "title": "Ingredientes del Menú",
+    "title": "Ingredientes del Menu",
     "subtitle": "Ingredientes que pueden usar los platillos",
     "records": "Ingredientes",
     "name": "Nombre",
@@ -500,7 +504,7 @@
     "noResults": "No se encontraron inversiones."
   },
   "sharedLoans": {
-    "title": "Préstamos",
+    "title": "Prestamos",
     "subtitle": "Rastrea préstamos, cuotas y obligaciones con socios",
     "search": "Buscar préstamos...",
     "lender": "Prestamista / Socio",
@@ -609,7 +613,7 @@
     "tipoIngreso": "Ingreso"
   },
   "orders": {
-    "title": "Órdenes",
+    "title": "Ordenes",
     "subtitle": "Crea, edita y administra órdenes para comer aquí y para llevar.",
     "newOrder": "Nueva orden",
     "back": "Volver a órdenes",
@@ -661,6 +665,13 @@
     "all": "Todos",
     "noMenuItems": "No se encontraron artículos del menú.",
     "orderPanel": "Orden",
+    "editOrder": "Editar orden",
+    "orderDetails": "Detalles de la orden",
+    "selectOrderHint": "Selecciona una orden para ver sus detalles y reimprimir su ticket.",
+    "server": "Mesero",
+    "createdAt": "Creada",
+    "reprintKitchenTicket": "Reimprimir ticket de cocina",
+    "reprintKitchenTicketCopy": "Reimprimir ticket de cocina (copia)",
     "emptyOrder": "Aún no hay artículos. Elige algo del menú.",
     "orderNotes": "Notas de la orden",
     "instructions": "Instrucciones especiales",

@@ -122,11 +122,13 @@ export const printAgent = {
 /**
  * Printing only works from the tablet that can reach the local printer bridge.
  * iPadOS 13+ often identifies itself as "Macintosh", so use touch points as
- * well as the legacy iPad token to avoid rejecting Chrome on iPads.
+ * well as the legacy iPad token to avoid rejecting Chrome on iPads. The Azure
+ * tablet runs Windows, so Windows browsers must be allowed through to the
+ * bridge as well; the bridge's origin check remains the access control.
  */
 export function canUsePrintAgent(): boolean {
   if (typeof navigator === "undefined") return false;
   const isIPad = /iPad/i.test(navigator.userAgent)
     || (/Macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
-  return /Android/i.test(navigator.userAgent) || isIPad;
+  return /Android|Windows/i.test(navigator.userAgent) || isIPad;
 }

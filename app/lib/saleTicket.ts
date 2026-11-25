@@ -107,6 +107,7 @@ export function buildSaleTicket(
   }
   lines.push(field(t("saleTicket.statusLabel"), t(`saleTicket.state.${order.status}`)));
   lines.push(field(t("saleTicket.date"), formatDate(order.paidAt ? new Date(order.paidAt) : now)));
+  lines.push(field(t("saleTicket.copy"), order.ticketPrintCount && order.ticketPrintCount > 1 ? String(order.ticketPrintCount - 1) : t("saleTicket.original")));
   lines.push(
     row(
       `${`${t("saleTicket.currency")}:`.padEnd(10)}${currency}`,

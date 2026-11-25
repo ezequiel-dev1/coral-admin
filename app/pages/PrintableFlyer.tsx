@@ -18,7 +18,7 @@ import { getObjectUrl } from "../lib/receipts";
  */
 
 /** Flyer-wide header title + coral eyebrow. */
-const FLYER_TITLE = "MENÚ";
+const FLYER_TITLE = "MENU";
 const FLYER_EYEBROW = "DEL MAR";
 
 /** Section heading shown above each category's item list. */

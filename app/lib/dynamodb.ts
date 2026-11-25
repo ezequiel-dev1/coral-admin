@@ -177,6 +177,8 @@ export type MenuItem = {
   ingredientIds?: string[];
   /** Option groups offered when ordering this item (configured on Menu Items). */
   modifierGroups?: ModifierGroup[];
+  /** Menu items the kitchen must prepare as part of this item (for example, tacos inside a combo). */
+  kitchenComponents?: Array<{ menuItemId: string; quantity: number }>;
   /** Price on delivery platforms (Uber Eats): `price` + 30%. Derived on save; see lib/pricing.ts. */
   platformPrice?: string;
   /** ISO time of the last successful publish to Uber Eats; set by the menu sync API, not the form. */
@@ -546,6 +548,8 @@ export type Order = {
   heldAt?: string;
   /** S3 key of the bank-transfer proof (screenshot sent by the customer), for transfer payments. */
   transferEvidenceKey?: string;
+  /** Number of print batches issued for this order. Incremented before each ticket is sent to a printer. */
+  ticketPrintCount?: number;
   mergedInto?: string;
   mergedFrom?: string[];
   splitFrom?: string;
@@ -1147,6 +1151,28 @@ export async function updateOrderStatus(
       },
     })
   );
+}
+
+/**
+ * Atomically allocate the next printed-ticket copy number for an order.
+ * This happens before dispatching to the printer: an uncertain printer result
+ * must still consume a number, so a retry can never be mistaken for the
+ * original ticket.
+ */
+export async function claimOrderTicketPrint(id: string): Promise<Order> {
+  const docClient = await getClient();
+  const result = await docClient.send(
+    new UpdateCommand({
+      TableName: TABLES.orders,
+      Key: { id },
+      ConditionExpression: "attribute_exists(id)",
+      UpdateExpression: "ADD ticketPrintCount :one",
+      ExpressionAttributeValues: { ":one": 1 },
+      ReturnValues: "ALL_NEW",
+    }),
+  );
+  if (!result.Attributes) throw new Error("Order not found");
+  return result.Attributes as Order;
 }
 
 export async function deleteOrder(id: string): Promise<void> {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "../i18n/LanguageProvider";
 import { useAuth } from "../auth/AuthProvider";
 import { Badge } from "@/components/ui/badge";
@@ -29,7 +29,6 @@ import {
   Search,
   Send,
   Split,
-  Merge,
   UtensilsCrossed,
   Bike,
   XCircle,
@@ -39,6 +38,7 @@ import {
   fetchMenuIngredients,
   fetchOrders,
   getUberEatsEnabled,
+  claimOrderTicketPrint,
   isMenuItemAvailable,
   type MenuIngredient,
   type MenuItem,
@@ -56,7 +56,6 @@ import {
   computeTotals,
   getModifierGroups,
   lineSignature,
-  mergeOrders,
   modifiersTotal,
   newLineId,
   normalizeLines,
@@ -134,8 +133,13 @@ export function OrdersPage() {
   const [filter, setFilter] = useState<Filter>("active");
   const [editing, setEditing] = useState<Order | null>(null);
   const [editingIsNew, setEditingIsNew] = useState(false);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [showMerge, setShowMerge] = useState(false);
+  const [editingItemsOnly, setEditingItemsOnly] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [showReprint, setShowReprint] = useState(false);
+  const [reprintCustomerCopy, setReprintCustomerCopy] = useState(false);
+  const [showCancel, setShowCancel] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [showSelectedSplit, setShowSelectedSplit] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -188,6 +192,15 @@ export function OrdersPage() {
     return c;
   }, [orders]);
 
+  function changeFilter(nextFilter: Filter) {
+    setFilter(nextFilter);
+    const matches = orders.filter((order) => {
+      if (order.source === "uber-eats") return false;
+      return nextFilter === "active" ? order.status === "open" : order.status === nextFilter;
+    });
+    setSelectedOrder(matches.length === 1 ? { ...matches[0], items: normalizeLines(matches[0].items) } : null);
+  }
+
   const occupiedLabels = useMemo(
     () => new Set(orders.filter((o) => o.status === "open").map((o) => o.tableLabel)),
     [orders]
@@ -196,38 +209,120 @@ export function OrdersPage() {
   function startNew() {
     setEditing(blankOrder("dine-in", "", server));
     setEditingIsNew(true);
+    setEditingItemsOnly(false);
+  }
+
+  function startItemEdit(order: Order) {
+    setEditing({ ...order, items: normalizeLines(order.items) });
+    setEditingIsNew(false);
+    setEditingItemsOnly(true);
+  }
+
+  const canEditSelectedOrder = Boolean(
+    selectedOrder &&
+      (selectedOrder.status === "open" || selectedOrder.status === "held") &&
+      [user?.name, user?.email]
+        .filter((value): value is string => Boolean(value))
+        .some((value) => value.trim().toLocaleLowerCase() === selectedOrder.server.trim().toLocaleLowerCase())
+  );
+  const canCancelSelectedOrder = canEditSelectedOrder;
+  const canSplitSelectedOrder = Boolean(
+    selectedOrder &&
+      (selectedOrder.status === "open" || selectedOrder.status === "held") &&
+      selectedOrder.items.reduce((count, item) => count + item.quantity, 0) >= 2
+  );
+
+  async function splitSelectedOrder(groups: OrderLineItem[][]) {
+    if (!selectedOrder) return;
+    setShowSelectedSplit(false);
+    setBusy(true);
+    try {
+      await splitOrder(selectedOrder, groups);
+      setSelectedOrder(null);
+      await load();
+    } catch (err) {
+      console.error("Failed to split order:", err);
+      setError(t("orders.actionError"));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function cancelSelectedOrder() {
+    if (!selectedOrder || !canCancelSelectedOrder) return;
+    setBusy(true);
+    try {
+      await cancelOrder(selectedOrder.id, cancelReason.trim() || t("orders.noReason"));
+      setShowCancel(false);
+      setCancelReason("");
+      setSelectedOrder(null);
+      await load();
+    } catch (err) {
+      console.error("Failed to cancel order:", err);
+      setError(t("orders.actionError"));
+    } finally {
+      setBusy(false);
+    }
   }
 
   function openOrder(o: Order) {
-    setEditing({ ...o, items: normalizeLines(o.items) });
-    setEditingIsNew(false);
+    setSelectedOrder((current) => current?.id === o.id ? null : { ...o, items: normalizeLines(o.items) });
   }
 
-  function toggleSelected(id: string) {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  const selectedOrders = orders
-    .filter((o) => selected.has(o.id))
-    .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-
-  async function handleMerge() {
-    if (selectedOrders.length < 2) return;
+  async function reprintSelectedOrder() {
+    if (!selectedOrder) return;
+    if (selectedOrder.status === "paid") {
+      setReprintCustomerCopy(false);
+      setShowReprint(true);
+      return;
+    }
+    if (!canUsePrintAgent()) {
+      setError(t("orders.reprintNoPrinter"));
+      return;
+    }
     setBusy(true);
     try {
-      await mergeOrders(selectedOrders[0], selectedOrders.slice(1));
-      setSelected(new Set());
-      setShowMerge(false);
-      await load();
+      const menuItemById = new Map(menuItems.map((item) => [item.id, item]));
+      const printedOrder = await claimOrderTicketPrint(selectedOrder.id);
+      setSelectedOrder(printedOrder);
+      const result = await printAgent.print(
+        buildKitchenTicket(printedOrder, (id) => menuItemById.get(id), t, printedOrder.serviceType === "takeout" ? t("orders.takeout") : tableName(t, printedOrder.tableLabel)),
+      );
+      if (!result.ok) {
+        setError(result.message ? `${t("kitchenTicket.printFailed")} (${result.message})` : t("kitchenTicket.printFailed"));
+      }
     } catch (err) {
-      console.error("Merge failed:", err);
+      console.error("Kitchen ticket reprint failed:", err);
       setError(t("orders.actionError"));
-      setShowMerge(false);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function confirmSelectedSaleReprint() {
+    if (!selectedOrder) return;
+    setShowReprint(false);
+    if (!canUsePrintAgent()) {
+      setError(t("orders.reprintNoPrinter"));
+      return;
+    }
+    setBusy(true);
+    try {
+      const cashier = user?.name || user?.email || "";
+      const printedOrder = await claimOrderTicketPrint(selectedOrder.id);
+      setSelectedOrder(printedOrder);
+      const jobs = [buildSaleTicket(printedOrder, t, { cashier, reprint: true }, "restaurant")];
+      if (reprintCustomerCopy) jobs.push(buildSaleTicket(printedOrder, t, { cashier }, "customer"));
+      for (const job of jobs) {
+        const result = await printAgent.print(job);
+        if (!result.ok) {
+          setError(result.message ? `${t("kitchenTicket.printFailed")} (${result.message})` : t("kitchenTicket.printFailed"));
+          return;
+        }
+      }
+    } catch (err) {
+      console.error("Sale ticket reprint failed:", err);
+      setError(t("orders.actionError"));
     } finally {
       setBusy(false);
     }
@@ -240,8 +335,9 @@ export function OrdersPage() {
       if (!res.ok) throw new Error("Uber workflow update failed");
       if (workflow === "preparing" && canUsePrintAgent()) {
         const menuItems = await fetchMenuItems();
-        const categories = new Map(menuItems.map((item) => [item.id, item.category]));
-        const result = await printAgent.print(buildKitchenTicket(order, (id) => categories.get(id) ?? "", t, "Uber Eats"));
+        const menuItemById = new Map(menuItems.map((item) => [item.id, item]));
+        const printedOrder = await claimOrderTicketPrint(order.id);
+        const result = await printAgent.print(buildKitchenTicket(printedOrder, (id) => menuItemById.get(id), t, "Uber Eats"));
         if (!result.ok) setError(result.message ? `${t("kitchenTicket.printFailed")} (${result.message})` : t("kitchenTicket.printFailed"));
       }
       await load();
@@ -255,6 +351,7 @@ export function OrdersPage() {
         key={editing.id}
         initial={editing}
         isNew={editingIsNew}
+        itemsOnly={editingItemsOnly}
         menuItems={menuItems}
         ingredients={ingredients}
         occupiedLabels={occupiedLabels}
@@ -262,6 +359,7 @@ export function OrdersPage() {
         onChanged={load}
         onClose={() => {
           setEditing(null);
+          setEditingItemsOnly(false);
           load();
         }}
       />
@@ -269,24 +367,15 @@ export function OrdersPage() {
   }
 
   const filters: Filter[] = ["active", "held", "paid", "cancelled"];
-
   return (
     <>
-      <div className="orders-workspace">
-      <div className="orders-list-panel">
       <section className="hero-row">
         <div>
-          <p className="eyebrow">{t("nav.overview")}</p>
           <h1>{t("orders.title")}</h1>
           <p className="subhead">{t("orders.subtitle")}</p>
         </div>
         <div className="flex gap-2">
-          {selectedOrders.length >= 2 && (
-            <Button variant="outline" onClick={() => setShowMerge(true)}>
-              <Merge size={16} /> {t("orders.merge")} ({selectedOrders.length})
-            </Button>
-          )}
-          <Button onClick={startNew}>
+          <Button onClick={startNew} className="new-order-button">
             <Plus size={16} /> {t("orders.newOrder")}
           </Button>
         </div>
@@ -296,7 +385,7 @@ export function OrdersPage() {
         {filters.map((f) => (
           <button
             key={f}
-            onClick={() => setFilter(f)}
+            onClick={() => changeFilter(f)}
             className={
               "rounded-full border px-3 py-1 text-sm transition-colors " +
               (filter === f
@@ -315,6 +404,8 @@ export function OrdersPage() {
         </p>
       )}
 
+      <div className="orders-workspace">
+      <div className="orders-list-panel">
       {loading ? (
         <div className="flex items-center gap-2 text-sm text-[var(--text-muted)]">
           <Loader2 className="animate-spin" size={16} /> {t("auth.loading")}
@@ -324,55 +415,92 @@ export function OrdersPage() {
           {t("orders.empty")}
         </p>
       ) : (
-        <div className="grid gap-2">
+        <div className="order-list grid gap-2">
           {visible.map((o) => {
-            const mergeable = o.status === "open" || o.status === "held";
             const count = o.items.reduce((s, l) => s + l.quantity, 0);
+            const isSelected = selectedOrder?.id === o.id;
             return (
-              <div
-                key={o.id}
-                className="flex items-center gap-3 rounded-xl border border-input bg-[var(--surface)] p-3"
-              >
-                {mergeable ? (
-                  <input
-                    type="checkbox"
-                    aria-label={t("orders.selectForMerge")}
-                    checked={selected.has(o.id)}
-                    onChange={() => toggleSelected(o.id)}
-                  />
-                ) : (
-                  <span className="w-[13px]" />
-                )}
-                <button
-                  className="flex flex-1 items-center gap-3 text-left"
+              <Fragment key={o.id}>
+                <div
+                  className={`order-list-card rounded-xl border border-input bg-[var(--surface)] p-3${isSelected ? " is-selected" : ""}`}
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={isSelected}
                   onClick={() => openOrder(o)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      openOrder(o);
+                    }
+                  }}
                 >
-                  <div className="flex-1">
-                    <p className="text-sm font-semibold">
-                      {o.serviceType === "takeout"
-                        ? `${t("orders.takeout")}${o.customerName ? ` · ${o.customerName}` : ""}`
-                        : o.tableLabel ? tableName(t, o.tableLabel) : `${t("orders.table")} —`}
-                      {o.splitLabel ? ` · ${o.splitLabel}` : ""}
-                    </p>
-                    <p className="text-xs text-[var(--text-muted)]">
-                      {count} {t("orders.itemsLabel")} · {o.server || "—"} ·{" "}
-                      {new Date(o.createdAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
-                    </p>
+                  <div className="order-list-card-button text-left">
+                    <div className="order-list-card-summary flex-1">
+                      <p className="order-list-card-title text-sm font-semibold">
+                        {o.serviceType === "takeout"
+                          ? `${t("orders.takeout")}${o.customerName ? ` · ${o.customerName}` : ""}`
+                          : o.tableLabel ? tableName(t, o.tableLabel) : `${t("orders.table")} —`}
+                        {o.splitLabel ? ` · ${o.splitLabel}` : ""}
+                      </p>
+                      <p className="order-list-card-meta text-xs text-[var(--text-muted)]">
+                        <span>{count} {t("orders.itemsLabel")}</span>
+                        <span className="order-list-card-extra"> · {o.server || "—"} · {new Date(o.createdAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</span>
+                      </p>
+                    </div>
+                    <Badge
+                      className="order-list-card-status"
+                      variant={statusVariant(displayStatus(o))}
+                    >
+                      {statusLabel(t, displayStatus(o))}
+                    </Badge>
+                    <b className="order-list-card-total w-28 text-right">{formatMoney(o.total)}</b>
                   </div>
-                  <Badge
-                    variant={statusVariant(displayStatus(o))}
-                  >
-                    {statusLabel(t, displayStatus(o))}
-                  </Badge>
-                  <b className="w-28 text-right">{formatMoney(o.total)}</b>
-                </button>
-              </div>
+                  {isSelected && (
+                    <div onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+                      <OrderDetailsPanel
+                        order={selectedOrder}
+                        t={t}
+                        busy={busy}
+                        onReprint={reprintSelectedOrder}
+                        canEdit={canEditSelectedOrder}
+                        onEdit={() => selectedOrder && startItemEdit(selectedOrder)}
+                        canSplit={canSplitSelectedOrder}
+                        onSplit={() => setShowSelectedSplit(true)}
+                        canCancel={canCancelSelectedOrder}
+                        onCancel={() => {
+                          setCancelReason("");
+                          setShowCancel(true);
+                        }}
+                        embedded
+                      />
+                    </div>
+                  )}
+                </div>
+              </Fragment>
             );
           })}
         </div>
       )}
 
       </div>
+      {visible.length > 0 && (
+        <OrderDetailsPanel
+          order={selectedOrder}
+          t={t}
+          busy={busy}
+          onReprint={reprintSelectedOrder}
+          canEdit={canEditSelectedOrder}
+          onEdit={() => selectedOrder && startItemEdit(selectedOrder)}
+          canSplit={canSplitSelectedOrder}
+          onSplit={() => setShowSelectedSplit(true)}
+          canCancel={canCancelSelectedOrder}
+          onCancel={() => {
+            setCancelReason("");
+            setShowCancel(true);
+          }}
+          className="order-details-desktop"
+        />
+      )}
       {uberEatsEnabled && <UberOrdersBoard
         orders={orders}
         loading={loading}
@@ -382,30 +510,152 @@ export function OrdersPage() {
       />}
       </div>
 
-      <Dialog open={showMerge} onOpenChange={setShowMerge}>
+      <Dialog open={showReprint} onOpenChange={setShowReprint}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{t("orders.mergeTitle")}</DialogTitle>
+            <DialogTitle>{t("orders.reprintTitle")}</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-[var(--text-muted)]">
-            {t("orders.mergeBody", {
-              n: String(selectedOrders.length),
-              target: selectedOrders[0]
-                ? selectedOrders[0].serviceType === "takeout"
-                  ? t("orders.takeout")
-                  : tableName(t, selectedOrders[0].tableLabel)
-                : "",
-            })}
-          </p>
+          <p className="text-sm text-[var(--text-muted)]">{t("orders.reprintBody")}</p>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="h-4 w-4"
+              checked={reprintCustomerCopy}
+              onChange={(e) => setReprintCustomerCopy(e.target.checked)}
+            />
+            {t("orders.reprintCustomerCopy")}
+          </label>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowMerge(false)}>{t("orders.keep")}</Button>
-            <Button onClick={handleMerge} disabled={busy}>
-              {busy && <Loader2 className="animate-spin" size={14} />} {t("orders.merge")}
+            <Button variant="outline" onClick={() => setShowReprint(false)}>{t("orders.kitchenBack")}</Button>
+            <Button onClick={confirmSelectedSaleReprint} disabled={busy}>
+              <Printer size={14} /> {t("orders.reprintConfirm")}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={showCancel} onOpenChange={setShowCancel}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{t("orders.cancelTitle")}</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-1">
+            <Label>{t("orders.reason")}</Label>
+            <Input value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} autoFocus />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCancel(false)} disabled={busy}>{t("orders.keep")}</Button>
+            <Button variant="destructive" className="!bg-destructive !text-white hover:!bg-destructive/90" onClick={cancelSelectedOrder} disabled={busy}>
+              {busy ? <Loader2 className="animate-spin" size={14} /> : <XCircle size={14} />} {t("orders.cancelOrder")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {showSelectedSplit && selectedOrder && (
+        <SplitDialog
+          items={selectedOrder.items}
+          t={t}
+          onClose={() => setShowSelectedSplit(false)}
+          onConfirm={splitSelectedOrder}
+        />
+      )}
     </>
+  );
+}
+
+function OrderDetailsPanel({
+  order,
+  t,
+  busy,
+  onReprint,
+  canEdit = false,
+  onEdit,
+  canSplit = false,
+  onSplit,
+  canCancel = false,
+  onCancel,
+  embedded = false,
+  className = "",
+}: {
+  order: Order | null;
+  t: T;
+  busy: boolean;
+  onReprint: () => void;
+  canEdit?: boolean;
+  onEdit?: () => void;
+  canSplit?: boolean;
+  onSplit?: () => void;
+  canCancel?: boolean;
+  onCancel?: () => void;
+  embedded?: boolean;
+  className?: string;
+}) {
+  if (!order) {
+    return (
+      <aside className={`order-details-panel order-details-empty ${className}`} aria-live="polite">
+        <h2>{t("orders.orderDetails")}</h2>
+        <p>{t("orders.selectOrderHint")}</p>
+      </aside>
+    );
+  }
+
+  const itemCount = order.items.reduce((sum, item) => sum + item.quantity, 0);
+  const label = order.serviceType === "takeout"
+    ? `${t("orders.takeout")}${order.customerName ? ` · ${order.customerName}` : ""}`
+    : order.tableLabel ? tableName(t, order.tableLabel) : `${t("orders.table")} —`;
+
+  return (
+    <aside className={`order-details-panel${embedded ? " order-details-embedded" : ""} ${className}`} aria-live="polite">
+      {!embedded && (
+        <div className="order-details-head">
+          <div>
+            <p className="eyebrow">{t("orders.orderDetails")}</p>
+            <h2>{label}{order.splitLabel ? ` · ${order.splitLabel}` : ""}</h2>
+          </div>
+          <Badge variant={statusVariant(displayStatus(order))}>{statusLabel(t, displayStatus(order))}</Badge>
+        </div>
+      )}
+      <dl className="order-details-meta">
+        <div><dt>{t("orders.itemsLabel")}</dt><dd>{itemCount}</dd></div>
+        <div><dt>{t("orders.server")}</dt><dd>{order.server || "—"}</dd></div>
+        <div><dt>{t("orders.createdAt")}</dt><dd>{new Date(order.createdAt).toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}</dd></div>
+      </dl>
+      <div className="order-details-items">
+        {order.items.map((item) => (
+          <div key={item.lineId} className="order-details-item">
+            <span>{item.quantity}×</span>
+            <div>
+              <p>{item.name}</p>
+              {(item.modifiers ?? []).length > 0 && <small>{(item.modifiers ?? []).map((modifier) => modifier.name).join(", ")}</small>}
+              {item.instructions && <small>“{item.instructions}”</small>}
+            </div>
+            <b>{formatMoney(item.quantity * item.unitPrice)}</b>
+          </div>
+        ))}
+      </div>
+      {order.notes && <p className="order-details-notes">{t("orders.orderNotes")}: {order.notes}</p>}
+      <div className="order-details-total"><span>{t("orders.total")}</span><b>{formatMoney(order.total)}</b></div>
+      {canEdit && onEdit && (
+        <Button variant="outline" onClick={onEdit} disabled={busy} className="w-full">
+          <Pencil size={14} /> {t("orders.editOrder")}
+        </Button>
+      )}
+      {canSplit && onSplit && (
+        <Button variant="outline" onClick={onSplit} disabled={busy} className="w-full">
+          <Split size={14} /> {t("orders.split")}
+        </Button>
+      )}
+      {canCancel && onCancel && (
+        <Button variant="destructive" onClick={onCancel} disabled={busy} className="w-full !bg-destructive !text-white hover:!bg-destructive/90">
+          <XCircle size={14} /> {t("orders.cancelOrder")}
+        </Button>
+      )}
+      <Button onClick={onReprint} disabled={busy} className="order-details-print w-full" aria-label={order.status === "paid" ? t("orders.reprint") : t("orders.reprintKitchenTicketCopy")}>
+        {busy ? <Loader2 className="animate-spin" size={14} /> : <Printer size={14} />}
+        <span>{order.status === "paid" ? t("orders.reprint") : t("orders.reprintKitchenTicketCopy")}</span>
+      </Button>
+    </aside>
   );
 }
 
@@ -492,6 +742,7 @@ type ReasonDialog = { kind: "void"; lineId: string } | { kind: "cancel" } | null
 function OrderEditor({
   initial,
   isNew,
+  itemsOnly,
   menuItems,
   ingredients,
   occupiedLabels,
@@ -501,6 +752,7 @@ function OrderEditor({
 }: {
   initial: Order;
   isNew: boolean;
+  itemsOnly: boolean;
   menuItems: MenuItem[];
   ingredients: MenuIngredient[];
   occupiedLabels: Set<string>;
@@ -631,6 +883,12 @@ function OrderEditor({
     }
   }
 
+  const handleSaveItemChanges = () =>
+    run(async () => {
+      const saved = await persist();
+      if (saved) onClose();
+    }, t("orders.saved"));
+
   // "Send To Kitchen": validate first, then have the waiter confirm the items by seat.
   function handleSendToKitchen() {
     const problem = validate();
@@ -648,12 +906,13 @@ function OrderEditor({
       if (!saved) return;
       // The print agent only exists on the tablet; elsewhere just save.
       if (canUsePrintAgent()) {
-        const categoryById = new Map(menuItems.map((i) => [i.id, i.category]));
+        const menuItemById = new Map(menuItems.map((item) => [item.id, item]));
+        const printedOrder = await claimOrderTicketPrint(saved.id);
         const job = buildKitchenTicket(
-          saved,
-          (id) => categoryById.get(id) ?? "",
+          printedOrder,
+          (id) => menuItemById.get(id),
           t,
-          tableName(t, saved.tableLabel),
+          tableName(t, printedOrder.tableLabel),
         );
         const result = await printAgent.print(job);
         if (!result.ok) {
@@ -678,10 +937,11 @@ function OrderEditor({
         return;
       }
       const cashier = currentUser?.name || currentUser?.email || "";
+      const printedOrder = await claimOrderTicketPrint(draft.id);
       // Cashier (restaurant) copy is marked as a reprint; none of these jobs opens the cash drawer.
-      const jobs = [buildSaleTicket(draft, t, { cashier, reprint: true }, "restaurant")];
+      const jobs = [buildSaleTicket(printedOrder, t, { cashier, reprint: true }, "restaurant")];
       // The optional customer copy carries no reprint note.
-      if (reprintCustomerCopy) jobs.push(buildSaleTicket(draft, t, { cashier }, "customer"));
+      if (reprintCustomerCopy) jobs.push(buildSaleTicket(printedOrder, t, { cashier }, "customer"));
       // One at a time so the tickets come out in order; stop at the first failure.
       for (const job of jobs) {
         const result = await printAgent.print(job);
@@ -818,7 +1078,7 @@ function OrderEditor({
       <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
         {/* ------------------------- left: setup + menu ------------------------- */}
         <div className="grid content-start gap-4">
-          <article className="rounded-xl border border-input bg-[var(--surface)] p-4">
+          {!itemsOnly && <article className="rounded-xl border border-input bg-[var(--surface)] p-4">
             <div className="mb-3 grid gap-2">
               <Label>{t("orders.serviceType")}</Label>
               <div className="flex gap-2" role="group" aria-label={t("orders.serviceType")}>
@@ -882,7 +1142,7 @@ function OrderEditor({
                 />
               </div>
             )}
-          </article>
+          </article>}
 
           {!readOnly && (
             <article className="rounded-xl border border-input bg-[var(--surface)] p-4">
@@ -1068,7 +1328,11 @@ function OrderEditor({
           )}
 
           {/* actions */}
-          {readOnly ? (
+          {itemsOnly ? (
+            <Button onClick={handleSaveItemChanges} disabled={busy || !dirty}>
+              {busy ? <Loader2 className="animate-spin" size={14} /> : <Pencil size={14} />} {t("orders.save")}
+            </Button>
+          ) : readOnly ? (
             <div className="grid gap-2">
               <p className="text-xs text-[var(--text-muted)]">{t("orders.readOnlyNote")}</p>
               <Button onClick={handleReopen} disabled={busy || (draft.status === "paid" && draft.paymentMethod === "card")}>
@@ -1134,8 +1398,8 @@ function OrderEditor({
           item={itemDialog.item}
           ingredients={ingredients}
           line={itemDialog.line}
-          defaultSeat={draft.seat}
-          seatCount={seats}
+          defaultSeat={itemsOnly ? undefined : draft.seat}
+          seatCount={itemsOnly ? 0 : seats}
           t={t}
           onClose={() => setItemDialog(null)}
           onConfirm={(line) => {
