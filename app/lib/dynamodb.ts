@@ -858,6 +858,86 @@ export async function saveOpenCheck(
 }
 
 /**
+ * Replace several still-open checks with one new open check. The original
+ * records remain in the ledger as cancelled entries pointing at the new check,
+ * rather than being deleted, so an accidental merge remains auditable.
+ */
+export async function mergeOpenChecks(
+  checks: Order[],
+  server: string,
+  taxRate: number
+): Promise<Order> {
+  if (checks.length < 2) throw new Error("Select at least two open checks to merge.");
+
+  const fresh = await Promise.all(checks.map((check) => getOrder(check.id)));
+  if (fresh.some((check) => !check || check.status !== "open")) {
+    throw new Error("One or more checks are no longer open.");
+  }
+  const sources = fresh as Order[];
+
+  // Keep distinct item customizations separate while combining identical lines.
+  const byLine = new Map<string, OrderLineItem>();
+  for (const source of sources) {
+    for (const item of source.items) {
+      const key = JSON.stringify([
+        item.menuItemId,
+        item.name,
+        item.unitPrice,
+        item.modifiers ?? [],
+        item.instructions ?? "",
+        item.seat ?? null,
+      ]);
+      const existing = byLine.get(key);
+      if (existing) existing.quantity += item.quantity;
+      else byLine.set(key, item.modifiers ? { ...item, modifiers: [...item.modifiers] } : { ...item });
+    }
+  }
+  const items = Array.from(byLine.values());
+  const subtotal = Math.round(items.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0) * 100) / 100;
+  const tax = Math.round(subtotal * taxRate * 100) / 100;
+  const id = `ord-${Date.now()}`;
+  const merged: Order = {
+    id,
+    saleCode: await nextSaleCode(),
+    createdAt: new Date().toISOString(),
+    tableLabel: sources[0].tableLabel,
+    server: server || sources[0].server,
+    items,
+    subtotal,
+    tax,
+    tip: 0,
+    total: Math.round((subtotal + tax) * 100) / 100,
+    processingFee: 0,
+    netAmount: 0,
+    status: "open",
+    paymentMethod: "cash",
+    notes: sources.map((source) => source.notes).filter(Boolean).join(" | "),
+    mergedFrom: sources.map((source) => source.id),
+  };
+
+  const docClient = await getClient();
+  await docClient.send(new PutCommand({ TableName: TABLES.orders, Item: merged }));
+  for (const source of sources) {
+    await docClient.send(
+      new UpdateCommand({
+        TableName: TABLES.orders,
+        Key: { id: source.id },
+        ConditionExpression: "#s = :open",
+        UpdateExpression: "SET #s = :cancelled, mergedInto = :mergedInto, cancelReason = :reason",
+        ExpressionAttributeNames: { "#s": "status" },
+        ExpressionAttributeValues: {
+          ":open": "open" as OrderStatus,
+          ":cancelled": "cancelled" as OrderStatus,
+          ":mergedInto": id,
+          ":reason": `Merged into ${id}`,
+        },
+      })
+    );
+  }
+  return merged;
+}
+
+/**
  * Persist the final tip/total on an open check without closing it. Used for the
  * card path, where the order must stay "open" for the Stripe webhook to flip it
  * to "paid" — but we still want the chosen tip recorded on the order.

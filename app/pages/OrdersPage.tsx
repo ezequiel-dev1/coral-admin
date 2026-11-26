@@ -25,6 +25,7 @@ import {
   Printer,
   Play,
   Plus,
+  RefreshCw,
   RotateCcw,
   Search,
   Send,
@@ -128,6 +129,7 @@ export function OrdersPage() {
   const [ingredients, setIngredients] = useState<MenuIngredient[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [uberEatsEnabled, setUberEatsEnabled] = useState(true);
   const [error, setError] = useState("");
   const [filter, setFilter] = useState<Filter>("active");
@@ -160,6 +162,12 @@ export function OrdersPage() {
       setLoading(false);
     }
   }, [t]);
+
+  async function refreshOrders() {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
+  }
 
   useEffect(() => {
     load();
@@ -375,6 +383,9 @@ export function OrdersPage() {
           <p className="subhead">{t("orders.subtitle")}</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={refreshOrders} disabled={refreshing}>
+            <RefreshCw className={refreshing ? "animate-spin" : ""} size={16} /> {t("orders.refresh")}
+          </Button>
           <Button onClick={startNew} className="new-order-button">
             <Plus size={16} /> {t("orders.newOrder")}
           </Button>
@@ -837,6 +848,35 @@ function OrderEditor({
     setMessage(null);
   }
 
+  // Adding from the menu should be a single tap. Required modifiers use their
+  // configured first option; optional modifiers, notes, and seat can still be
+  // adjusted from the line's edit action after it has been added.
+  function addMenuItem(item: MenuItem) {
+    const modifiers: OrderModifier[] = getModifierGroups(item).flatMap((group) =>
+      group.required && group.options[0]
+        ? [{
+            groupId: group.id,
+            group: group.name,
+            id: group.options[0].id,
+            name: group.options[0].name,
+            price: group.options[0].price,
+          }]
+        : [],
+    );
+    const basePrice = parsePrice(item.price);
+    upsertLine({
+      lineId: newLineId(),
+      menuItemId: item.id,
+      name: item.name,
+      basePrice,
+      unitPrice: round2(basePrice + modifiersTotal(modifiers)),
+      quantity: 1,
+      modifiers,
+      instructions: "",
+      seat: itemsOnly ? undefined : draft.seat,
+    });
+  }
+
   function changeQty(lineId: string, delta: number) {
     setDraft((d) => ({
       ...d,
@@ -1178,7 +1218,7 @@ function OrderEditor({
                   {filteredItems.map((item) => (
                     <button
                       key={item.id}
-                      onClick={() => setItemDialog({ item })}
+                      onClick={() => addMenuItem(item)}
                       className="flex flex-col items-start gap-1 rounded-xl border border-input bg-[var(--surface)] p-3 text-left transition-all hover:border-primary hover:shadow-sm focus-visible:ring-3 focus-visible:ring-ring/50"
                     >
                       <MenuItemThumb imageKey={item.imageKey} />

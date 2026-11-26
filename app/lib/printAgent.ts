@@ -101,7 +101,13 @@ async function call(
     };
   } catch (e) {
     const aborted = (e as Error).name === "AbortError";
-    return { ok: false, status: null, message: "", error: aborted ? "timeout" : "network" };
+    const detail = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+    return {
+      ok: false,
+      status: null,
+      message: `Request to ${AGENT_URL} failed: ${detail}`,
+      error: aborted ? "timeout" : "network",
+    };
   } finally {
     clearTimeout(timer);
   }

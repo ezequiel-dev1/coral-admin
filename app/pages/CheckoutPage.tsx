@@ -27,8 +27,6 @@ import {
   Copy,
   Check,
   Landmark,
-  SplitSquareHorizontal,
-  RotateCcw,
   Banknote,
   Printer,
   Paperclip,
@@ -51,24 +49,21 @@ import {
   type CashReconciliation,
   type CashEvidence,
   saveOpenCheck,
-  setSelfCheckoutToken,
   closeCheckPaid,
   getExchangeRate,
   setExchangeRate,
   type Currency,
   type ExchangeRate,
   splitCheckByItem,
-  unsplitCheck,
+  mergeOpenChecks,
   Order,
   OrderLineItem,
   OrderStatus,
   PaymentMethod,
 } from "../lib/dynamodb";
 import { uploadCorteEvidence, uploadTransferEvidence, getObjectUrl } from "../lib/receipts";
-import { PaymentQR } from "./PaymentQR";
-import { SeatingChart } from "./SeatingChart";
 import { tableName } from "../lib/tableName";
-import { printAgent, canUsePrintAgent, toPrinterText, PRINT_COLUMNS } from "../lib/printAgent";
+import { printAgent, canUsePrintAgent, toPrinterText, PRINT_COLUMNS, type AgentResult } from "../lib/printAgent";
 import { buildSaleTickets } from "../lib/saleTicket";
 import { useIsTouchDevice } from "./IngredientPicker";
 import { SplitCheckDialog, type SplitBucketResult } from "./SplitCheckDialog";
@@ -136,8 +131,6 @@ export function CheckoutPage() {
 
   // Checkout dialog
   const [showCheckout, setShowCheckout] = useState(false);
-  const [selfCheckoutUrl, setSelfCheckoutUrl] = useState<string | null>(null);
-  const [creatingSelfCheckout, setCreatingSelfCheckout] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
   const [orderNotes, setOrderNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -156,6 +149,7 @@ export function CheckoutPage() {
 
   // Result of the last automatic receipt print.
   const [receiptMsg, setReceiptMsg] = useState<{ ok: boolean; text: string; orderId?: string } | null>(null);
+  const [printingCheck, setPrintingCheck] = useState(false);
 
   // Tip: "" = no tip; otherwise a peso amount as a string
   const [tipInput, setTipInput] = useState("");
@@ -175,8 +169,9 @@ export function CheckoutPage() {
 
   // Split-check dialog
   const [showSplit, setShowSplit] = useState(false);
-  // When a split table is tapped, show its sub-checks to pay one at a time.
-  const [splitPickerTable, setSplitPickerTable] = useState<string | null>(null);
+  const [mergeMode, setMergeMode] = useState(false);
+  const [mergeSelection, setMergeSelection] = useState<string[]>([]);
+  const [mergingChecks, setMergingChecks] = useState(false);
 
   // Recent orders view
   const [showOrders, setShowOrders] = useState(false);
@@ -245,6 +240,17 @@ export function CheckoutPage() {
   }
 
   /** Pulse the cash drawer on its own (no receipt). */
+  function printerErrorText(result: AgentResult): string {
+    const summary = result.error === "timeout"
+      ? t("printer.errTimeout")
+      : result.error === "unsupported"
+        ? t("printer.errUnsupported")
+        : result.error === "network"
+          ? t("printer.errNetwork")
+          : `HTTP ${result.status}`;
+    return result.message ? `${summary}\n\nDetails: ${result.message}` : summary;
+  }
+
   async function openCashDrawer() {
     if (!canUsePrintAgent()) {
       setReceiptMsg({ ok: false, text: t("checkout.drawerNoPrinter") });
@@ -281,15 +287,7 @@ export function CheckoutPage() {
         const result = await printAgent.print(job);
         if (result.ok && job.openDrawer) drawerPending = false;
         if (!result.ok) {
-          const reason =
-            result.error === "network"
-              ? t("printer.errNetwork")
-              : result.error === "timeout"
-                ? t("printer.errTimeout")
-                : result.error === "unsupported"
-                  ? t("printer.errUnsupported")
-                  : result.message || `HTTP ${result.status}`;
-          throw new Error(reason);
+          throw new Error(printerErrorText(result));
         }
       }
       setReceiptMsg({ ok: true, text: t("saleTicket.printSent") });
@@ -329,37 +327,8 @@ export function CheckoutPage() {
     }
   }
 
-  /**
-   * Select a table: load its open check into the cart, or start an empty cart
-   * if the table is free. Tapping the already-selected table deselects it.
-   */
-  function selectTable(tableId: string) {
-    if (selectedTable === tableId) {
-      setSelectedTable(null);
-      setCurrentCheckId(null);
-      setCart([]);
-      return;
-    }
-    const checks = openChecks.filter((o) => o.tableLabel === tableId);
-    // A split table has multiple open sub-checks: let the user pick one to pay.
-    if (checks.length > 1) {
-      setSplitPickerTable(tableId);
-      return;
-    }
-    const existing = checks[0];
-    setSelectedTable(tableId);
-    setCurrentCheckId(existing?.id ?? null);
-    setCart(existing ? existing.items : []);
-  }
-
-  /** Open takeout orders (they share one label, so they're picked by id). */
-  const takeoutChecks = useMemo(
-    () => openChecks.filter((o) => o.serviceType === "takeout"),
-    [openChecks]
-  );
-
-  /** Select (or deselect) a takeout order to pay out. */
-  function selectTakeout(order: Order) {
+  /** Load an active check into the cart for checkout. */
+  function selectActiveCheck(order: Order) {
     if (currentCheckId === order.id) {
       setSelectedTable(null);
       setCurrentCheckId(null);
@@ -369,36 +338,34 @@ export function CheckoutPage() {
     setSelectedTable(order.tableLabel);
     setCurrentCheckId(order.id);
     setCart(order.items);
+    setOrderNotes(order.notes);
   }
 
-  /** Load a specific sub-check (by id) into the working cart for payout. */
-  function openSubCheck(order: Order) {
-    setSplitPickerTable(null);
-    setSelectedTable(order.tableLabel);
-    setCurrentCheckId(order.id);
-    setCart(order.items);
+  function toggleMergeSelection(id: string) {
+    setMergeSelection((selected) =>
+      selected.includes(id) ? selected.filter((selectedId) => selectedId !== id) : [...selected, id]
+    );
   }
 
-  /**
-   * Undo a split: merge the table's open checks back into one, so the user can
-   * start the split over. Loads the merged check into the cart.
-   */
-  async function clearSplit(tableLabel: string) {
+  async function mergeSelectedChecks() {
+    const selected = openChecks.filter((check) => mergeSelection.includes(check.id));
+    if (selected.length < 2 || mergingChecks) return;
+    if (!confirm(t("checkout.mergeConfirm", { n: String(selected.length) }))) return;
+    setMergingChecks(true);
     try {
-      const merged = await unsplitCheck(
-        tableLabel,
-        user?.name || user?.email || "",
-        TAX_RATE
-      );
-      setSplitPickerTable(null);
+      const merged = await mergeOpenChecks(selected, user?.name || user?.email || "", TAX_RATE);
       await loadData();
-      if (merged) {
-        setSelectedTable(tableLabel);
-        setCurrentCheckId(merged.id);
-        setCart(merged.items);
-      }
+      setSelectedTable(merged.tableLabel);
+      setCurrentCheckId(merged.id);
+      setCart(merged.items);
+      setOrderNotes(merged.notes);
+      setMergeSelection([]);
+      setMergeMode(false);
     } catch (err) {
-      console.error("Failed to clear split:", err);
+      console.error("Failed to merge checks:", err);
+      setReceiptMsg({ ok: false, text: err instanceof Error ? err.message : t("checkout.mergeFailed") });
+    } finally {
+      setMergingChecks(false);
     }
   }
 
@@ -739,15 +706,7 @@ export function CheckoutPage() {
       feed: 7,
       cut: true,
     });
-    const text = result.ok
-      ? t("checkout.printBankInfoSent")
-      : result.error === "timeout"
-        ? t("printer.errTimeout")
-        : result.error === "unsupported"
-          ? t("printer.errUnsupported")
-          : result.error === "other"
-            ? result.message || t("printer.errNetwork")
-            : t("printer.errNetwork");
+    const text = result.ok ? t("checkout.printBankInfoSent") : printerErrorText(result);
     setBankPrintMsg({ ok: result.ok, text });
     setPrintingBank(false);
   }
@@ -816,33 +775,57 @@ export function CheckoutPage() {
     }
   }
 
-  async function createSelfCheckout() {
-    if (!selectedTable || cart.length === 0) return;
-    setCreatingSelfCheckout(true);
-    try {
-      const checkId = await saveOpenCheck(currentCheckId, {
-        tableLabel: selectedTable, server: user?.name || user?.email || "", items: cart,
-        subtotal, tax, total: Math.round((subtotal + tax) * 100) / 100, notes: orderNotes.trim(),
-      });
-      const token = crypto.randomUUID();
-      await setSelfCheckoutToken(checkId, token);
-      setCurrentCheckId(checkId);
-      setSelfCheckoutUrl(`${window.location.origin}/self-checkout?order=${encodeURIComponent(checkId)}&token=${encodeURIComponent(token)}`);
-    } catch (error) { console.error("Failed to create self checkout:", error); }
-    finally { setCreatingSelfCheckout(false); }
-  }
+  /** Send the current itemized check to the register thermal printer. */
+  async function printCheck() {
+    if (cart.length === 0 || printingCheck) return;
+    if (!canUsePrintAgent()) {
+      setReceiptMsg({ ok: false, text: t("checkout.printTabletOnly") });
+      return;
+    }
 
-  /** Print only the self-checkout ticket, never the underlying dashboard. */
-  function printSelfCheckoutCheck() {
-    const qr = document.querySelector("[data-self-checkout-qr]")?.innerHTML;
-    if (!qr || !selfCheckoutUrl) return;
-    const popup = window.open("", "_blank", "width=420,height=720");
-    if (!popup) return;
-    const itemRows = cart.map((line) => `<tr><td>${line.quantity} × ${line.name.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</td><td>${formatMoney(line.unitPrice * line.quantity)}</td></tr>`).join("");
-    popup.document.write(`<!doctype html><html><head><title>Cuenta - Coral</title><style>@page{size:80mm auto;margin:5mm}body{font-family:Arial,sans-serif;color:#111;margin:0;text-align:center}h1{font-size:20px;margin:0 0 4px}.muted{font-size:12px;color:#555}table{width:100%;margin:14px 0;border-collapse:collapse;text-align:left;font-size:12px}td{padding:5px 0;border-bottom:1px solid #ddd}td:last-child{text-align:right}.total{display:flex;justify-content:space-between;font-size:16px;font-weight:700;border-top:2px solid #111;padding-top:8px}.qr{margin:16px auto;width:230px}.qr svg{width:230px;height:230px}</style></head><body><h1>CORAL REEF &amp; BEEF</h1><div class="muted">${selectedTable ?? "Cuenta"}</div><table>${itemRows}</table><div class="total"><span>Total</span><span>${formatMoney(total)}</span></div><div class="qr">${qr}</div><strong>Escanea para pagar</strong><p class="muted">Pago seguro con Stripe</p></body></html>`);
-    popup.document.close();
-    popup.focus();
-    window.setTimeout(() => popup.print(), 200);
+    const ticketRow = (label: string, value: string) => {
+      const left = toPrinterText(label);
+      const right = toPrinterText(value);
+      return `${left}${" ".repeat(Math.max(1, PRINT_COLUMNS - left.length - right.length))}${right}`;
+    };
+    const itemLines = cart.flatMap((line) => {
+      const amount = toPrinterText(formatMoney(line.unitPrice * line.quantity));
+      const prefix = `${line.quantity} x `;
+      const nameLines = wrapPrintText(toPrinterText(line.name), PRINT_COLUMNS - prefix.length - amount.length - 1);
+      return [
+        `${prefix}${(nameLines.shift() ?? "").padEnd(PRINT_COLUMNS - prefix.length - amount.length)}${amount}`,
+        ...nameLines,
+      ];
+    });
+
+    setPrintingCheck(true);
+    setReceiptMsg(null);
+    try {
+      const result = await printAgent.print({
+        printer: "register",
+        logo: true,
+        lines: [
+          { text: "CUENTA", align: "center", bold: true, size: 2 },
+          { text: toPrinterText(selectedTable ? tableName(t, selectedTable) : "Cuenta"), align: "center" },
+          "",
+          "-".repeat(PRINT_COLUMNS),
+          ...itemLines,
+          "-".repeat(PRINT_COLUMNS),
+          { text: ticketRow(t("checkout.total"), formatMoney(total)), bold: true, size: 2 },
+        ],
+        feed: 4,
+        cut: true,
+      });
+      if (!result.ok) {
+        throw new Error(printerErrorText(result));
+      }
+      setReceiptMsg({ ok: true, text: t("checkout.printBankInfoSent") });
+    } catch (err) {
+      console.error("Failed to print check:", err);
+      setReceiptMsg({ ok: false, text: err instanceof Error ? err.message : t("printer.errNetwork") });
+    } finally {
+      setPrintingCheck(false);
+    }
   }
 
   /** Close the checkout dialog and clear pending transfer evidence. */
@@ -976,11 +959,7 @@ export function CheckoutPage() {
     ];
     const result = await printAgent.print({ printer: "register", lines, feed: 5, cut: true });
     if (!result.ok) {
-      const reason = result.error === "timeout"
-        ? t("printer.errTimeout")
-        : result.error === "unsupported"
-          ? t("printer.errUnsupported")
-          : result.message || t("printer.errNetwork");
+      const reason = printerErrorText(result);
       console.error("Failed to print cash reconciliation:", reason);
       alert(reason);
     }
@@ -1162,18 +1141,15 @@ export function CheckoutPage() {
         </p>
       )}
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_360px] lg:items-start">
-        {/* Left column: seating chart + menu picker */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(360px,.72fr)_minmax(440px,1.28fr)] lg:items-start">
+        {/* Active checks */}
         <div className="flex min-w-0 flex-col gap-3">
-          {/* Seating chart — same width as the menu items */}
           <div className="flex flex-col gap-2 rounded-xl border border-input bg-[var(--surface)] p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="flex min-w-0 flex-col gap-0.5">
-                <Label className="mb-0">{t("checkout.seatingChart")}</Label>
+                <Label className="mb-0">{t("checkout.activeChecks")}</Label>
                 <span className="text-xs text-[var(--text-muted)]">
-                  {selectedTable
-                    ? `${t("checkout.tableSelected")} ${tableName(t, selectedTable)}`
-                    : t("checkout.selectTablePrompt")}
+                  {mergeMode ? t("checkout.mergeHint") : t("checkout.activeChecksHint")}
                 </span>
               </div>
               <div className="flex items-center gap-3">
@@ -1186,66 +1162,64 @@ export function CheckoutPage() {
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={!selectedTable}
-                  onClick={() => setShowSplit(true)}
+                  onClick={() => {
+                    setMergeMode((active) => !active);
+                    setMergeSelection([]);
+                  }}
                 >
-                  <SplitSquareHorizontal data-icon="inline-start" />
-                  {t("checkout.splitCheck")}
+                  {mergeMode ? t("checkout.cancel") : t("checkout.mergeChecks")}
                 </Button>
+                {!mergeMode && (
+                  <Button variant="outline" size="sm" disabled={!currentCheckId} onClick={() => setShowSplit(true)}>
+                    {t("checkout.splitCheck")}
+                  </Button>
+                )}
+                {mergeMode && (
+                  <Button size="sm" onClick={mergeSelectedChecks} disabled={mergeSelection.length < 2 || mergingChecks}>
+                    {mergingChecks ? t("checkout.mergingChecks") : t("checkout.mergeSelected", { n: String(mergeSelection.length) })}
+                  </Button>
+                )}
               </div>
             </div>
-            <SeatingChart
-              selected={selectedTable}
-              occupied={(spotId) =>
-                openChecks.some((o) => o.tableLabel === spotId)
-              }
-              onSelect={selectTable}
-              seatsLabel={t("checkout.seats")}
-            />
-          </div>
-
-          {/* Open takeout orders — not tied to a table */}
-          <div className="flex flex-col gap-2 rounded-xl border border-input bg-[var(--surface)] p-4">
-            <Label className="mb-0">{t("checkout.takeoutOrders")}</Label>
-            {takeoutChecks.length === 0 ? (
-              <span className="text-xs text-[var(--text-muted)]">
-                {t("checkout.noTakeoutOrders")}
-              </span>
+            {loading ? (
+              <p className="text-sm text-[var(--text-muted)]">{t("checkout.loading")}</p>
+            ) : openChecks.length === 0 ? (
+              <p className="rounded-lg border border-dashed border-input bg-[var(--surface-muted)] px-3 py-6 text-center text-sm text-[var(--text-muted)]">
+                {t("checkout.noActiveChecks")}
+              </p>
             ) : (
-              <div className="flex flex-wrap gap-2">
-                {takeoutChecks.map((o) => (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                {openChecks.map((order) => {
+                  const selected = mergeSelection.includes(order.id);
+                  const active = currentCheckId === order.id;
+                  const label = order.customerName || order.splitLabel || (order.serviceType === "takeout" ? t("orders.takeout") : tableName(t, order.tableLabel));
+                  return (
                   <button
-                    key={o.id}
-                    onClick={() => selectTakeout(o)}
-                    aria-pressed={currentCheckId === o.id}
+                    key={order.id}
+                    type="button"
+                    onClick={() => mergeMode ? toggleMergeSelection(order.id) : selectActiveCheck(order)}
+                    aria-pressed={mergeMode ? selected : active}
                     className={
-                      "flex flex-col items-start rounded-lg border px-3 py-2 text-left text-sm transition-colors " +
-                      (currentCheckId === o.id
+                      "relative flex min-h-24 flex-col items-start rounded-lg border p-3 text-left text-sm transition-colors " +
+                      ((mergeMode ? selected : active)
                         ? "border-transparent bg-primary text-primary-foreground"
                         : "border-input hover:bg-[var(--surface-muted)]")
                     }
                   >
-                    <span className="font-medium">
-                      {o.customerName || t("orders.takeout")}
+                    {mergeMode && <span className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded border border-current text-xs">{selected ? "✓" : ""}</span>}
+                    <span className="max-w-full truncate pr-6 font-medium">{label}</span>
+                    <span className="mt-1 text-xs opacity-80">
+                      {t("checkout.table")}: {order.tableLabel ? tableName(t, order.tableLabel) : "—"}
                     </span>
-                    <span className="text-xs opacity-80">
-                      {formatMoney(o.total)}
-                    </span>
+                    <span className="mt-1 text-xs opacity-80">{order.saleCode || order.id}</span>
+                    <span className="mt-auto pt-2 text-sm font-semibold">{formatMoney(order.total)}</span>
+                    <span className="text-xs opacity-80">{order.items.reduce((count, item) => count + item.quantity, 0)} {t("checkout.itemsLabel")}</span>
                   </button>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
-
-          {loading ? (
-            <p className="text-sm text-[var(--text-muted)]">{t("checkout.loading")}</p>
-          ) : (
-            !selectedTable && (
-              <p className="rounded-lg border border-dashed border-input bg-[var(--surface-muted)] px-3 py-2 text-sm text-[var(--text-muted)]">
-                {t("checkout.selectTablePrompt")}
-              </p>
-            )
-          )}
         </div>
 
         {/* Cart */}
@@ -1253,10 +1227,12 @@ export function CheckoutPage() {
           <div className="flex items-center gap-2">
             <ShoppingCart size={18} className="text-primary" />
             <h2 className="text-base font-semibold">
-              {selectedTable
-                ? takeoutChecks.some((o) => o.id === currentCheckId)
-                  ? t("orders.takeout")
-                  : tableName(t, selectedTable)
+              {currentCheckId
+                ? openChecks.find((order) => order.id === currentCheckId)?.customerName ||
+                  openChecks.find((order) => order.id === currentCheckId)?.splitLabel ||
+                  (openChecks.find((order) => order.id === currentCheckId)?.serviceType === "takeout"
+                    ? t("orders.takeout")
+                    : selectedTable ? tableName(t, selectedTable) : t("checkout.currentOrder"))
                 : t("checkout.currentOrder")}
             </h2>
             {itemCount > 0 && <Badge variant="secondary">{itemCount}</Badge>}
@@ -1327,9 +1303,15 @@ export function CheckoutPage() {
                 <Button variant="outline" className="flex-1" onClick={clearCart}>
                   {t("checkout.clear")}
                 </Button>
-                <Button variant="outline" className="flex-1" disabled={creatingSelfCheckout} onClick={createSelfCheckout}>
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={printCheck}
+                  disabled={printingCheck || !canUsePrintAgent()}
+                  title={canUsePrintAgent() ? undefined : t("checkout.printTabletOnly")}
+                >
                   <Printer data-icon="inline-start" />
-                  {creatingSelfCheckout ? "Preparing…" : "Print check"}
+                  {printingCheck ? t("checkout.printingBankInfo") : "Print check"}
                 </Button>
                 <Button className="flex-1" onClick={() => setShowCheckout(true)}>
                   {t("checkout.checkout")}
@@ -1339,17 +1321,6 @@ export function CheckoutPage() {
           )}
         </div>
       </div>
-
-      <Dialog open={Boolean(selfCheckoutUrl)} onOpenChange={(open) => !open && setSelfCheckoutUrl(null)}>
-        <DialogContent className="sm:max-w-sm">
-          <DialogHeader><DialogTitle>Customer self checkout</DialogTitle></DialogHeader>
-          {selfCheckoutUrl && <div className="flex flex-col items-center gap-4 py-2 text-center">
-            <p className="text-sm text-[var(--text-muted)]">Print this check or let the customer scan the QR code to securely pay on their phone.</p>
-            <div data-self-checkout-qr className="rounded-xl border border-input bg-white p-3"><PaymentQR url={selfCheckoutUrl} size={230} /></div>
-            <Button onClick={printSelfCheckoutCheck}><Printer data-icon="inline-start" />Print check</Button>
-          </div>}
-        </DialogContent>
-      </Dialog>
 
       {/* Checkout confirmation dialog */}
       <Dialog
@@ -1770,63 +1741,6 @@ export function CheckoutPage() {
             </Button>
             <Button onClick={saveRate} disabled={rateSaving}>
               {rateSaving ? t("checkout.saving") : t("checkout.save")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Split sub-check picker */}
-      <Dialog
-        open={splitPickerTable != null}
-        onOpenChange={(open) => !open && setSplitPickerTable(null)}
-      >
-        <DialogContent className="max-h-[90dvh] overflow-y-auto overscroll-contain sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              {t("checkout.table")} {splitPickerTable} — {t("checkout.splitCheck")}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-2 py-2">
-            <p className="text-sm text-[var(--text-muted)]">
-              {t("checkout.pickSubCheck")}
-            </p>
-            {openChecks
-              .filter((o) => o.tableLabel === splitPickerTable)
-              .map((o) => (
-                <button
-                  key={o.id}
-                  type="button"
-                  onClick={() => openSubCheck(o)}
-                  className="flex items-center justify-between rounded-lg border border-input p-3 text-left transition-colors hover:border-primary hover:bg-[var(--surface-muted)]"
-                >
-                  <div>
-                    <p className="text-sm font-medium">
-                      {o.splitLabel || t("checkout.subCheck")}
-                    </p>
-                    <p className="text-xs text-[var(--text-muted)]">
-                      {o.items.reduce((n, l) => n + l.quantity, 0)}{" "}
-                      {t("checkout.itemsLabel")}
-                    </p>
-                  </div>
-                  <span className="text-sm font-semibold">
-                    {formatMoney(o.total)}
-                  </span>
-                </button>
-              ))}
-          </div>
-          <DialogFooter className="sm:justify-between">
-            <Button
-              variant="outline"
-              onClick={() => splitPickerTable && clearSplit(splitPickerTable)}
-            >
-              <RotateCcw data-icon="inline-start" />
-              {t("checkout.clearSplit")}
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => setSplitPickerTable(null)}
-            >
-              {t("checkout.cancel")}
             </Button>
           </DialogFooter>
         </DialogContent>
