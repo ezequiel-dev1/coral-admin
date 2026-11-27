@@ -13,3 +13,14 @@ resource "aws_dynamodb_table" "menu_items" {
     Environment = "UAT"
   }
 }
+
+resource "aws_dynamodb_table" "recipes" {
+  name = "coral-recipes"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key = "id"
+  attribute {
+    name = "id"
+    type = "S"
+  }
+  tags = { Name = "coral-recipes", Environment = "UAT" }
+}

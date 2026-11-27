@@ -48,83 +48,6 @@ function formatDuration(minutes: number): string {
   return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
-type WeatherData = {
-  location: string;
-  temperature: string;
-  condition: string;
-};
-
-function getWeatherCondition(code: number): string {
-  if (code === 0) return "Clear sky";
-  if (code <= 3) return "Partly cloudy";
-  if (code <= 48) return "Foggy";
-  if (code <= 57) return "Drizzle";
-  if (code <= 65) return "Rainy";
-  if (code <= 67) return "Freezing rain";
-  if (code <= 77) return "Snowy";
-  if (code <= 82) return "Rain showers";
-  if (code <= 86) return "Snow showers";
-  if (code <= 99) return "Thunderstorm";
-  return "Unknown";
-}
-
-function useWeather(): WeatherData {
-  const [weather, setWeather] = useState<WeatherData>({
-    location: "Loading...",
-    temperature: "--",
-    condition: "",
-  });
-
-  useEffect(() => {
-    if (!navigator.geolocation) {
-      setWeather({ location: "Unknown", temperature: "--", condition: "" });
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      async (position) => {
-        const { latitude, longitude } = position.coords;
-        try {
-          const [geoRes, weatherRes] = await Promise.all([
-            fetch(
-              `https://nominatim.openstreetmap.org/reverse?lat=${latitude}&lon=${longitude}&format=json`
-            ),
-            fetch(
-              `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,weather_code&temperature_unit=celsius`
-            ),
-          ]);
-
-          const geoData = await geoRes.json();
-          const weatherData = await weatherRes.json();
-
-          const city =
-            geoData.address?.city ||
-            geoData.address?.town ||
-            geoData.address?.village ||
-            geoData.address?.municipality ||
-            "Unknown";
-
-          const temp = Math.round(weatherData.current?.temperature_2m ?? 0);
-          const code = weatherData.current?.weather_code ?? 0;
-
-          setWeather({
-            location: city,
-            temperature: `${temp}°C`,
-            condition: getWeatherCondition(code),
-          });
-        } catch {
-          setWeather({ location: "Unknown", temperature: "--", condition: "" });
-        }
-      },
-      () => {
-        setWeather({ location: "Unknown", temperature: "--", condition: "" });
-      }
-    );
-  }, []);
-
-  return weather;
-}
-
 function getFirstName(name: string): string {
   return name.split(" ")[0] || name;
 }
@@ -132,7 +55,6 @@ function getFirstName(name: string): string {
 export function OverviewPage() {
   const { user } = useAuth();
   const { t } = useTranslation();
-  const weather = useWeather();
   const displayName = user?.name || "there";
   const [noticeOverride, setNoticeOverride] = useState<string | null>(null);
   const [activeTable, setActiveTable] = useState<string | null>(null);
@@ -218,11 +140,6 @@ export function OverviewPage() {
           <p className="eyebrow">{t("overview.eyebrow")}</p>
           <h1>{greeting}, {getFirstName(displayName)}.</h1>
           <p className="subhead">{t("overview.subhead", { guests: String(stats.guests) })}</p>
-        </div>
-        <div className="weather">
-          <span>{weather.temperature}</span>
-          <small>{weather.location}<br />{weather.condition}</small>
-          <span className="sun">☼</span>
         </div>
       </section>
 

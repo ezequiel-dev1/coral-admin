@@ -20,7 +20,7 @@
     "orders": "Órdenes",
     "checkout": "Caja",
     "menuItems": "Menú",
-    "menuIngredients": "Ingredientes del Menú",
+    "menuIngredients": "Ingredientes",
     "providers": "Proveedores",
     "investments": "Inversiones",
     "sharedLoans": "Préstamos",
@@ -30,6 +30,7 @@
     "ledger": "Libro Mayor",
     "reservations": "Reservaciones",
     "employees": "Empleados",
+    "recipes": "Recetas",
     "reports": "Reportes"
   },
   "reports": {
@@ -470,6 +471,10 @@
     "namePlaceholder": "ej. Pulpo",
     "category": "Categoría",
     "categoryPlaceholder": "ej. Mariscos",
+    "percentage": "Porcentaje",
+    "percentagePlaceholder": "ej. 1 kg",
+    "price": "Precio",
+    "pricePlaceholder": "ej. 160.00",
     "available": "Disponibilidad",
     "availableYes": "En existencia",
     "availableNo": "Agotado",
@@ -662,6 +667,9 @@
     "dineIn": "Comer aquí",
     "takeout": "Para llevar",
     "serviceType": "Tipo de servicio",
+    "wizardService": "Selecciona comer aquí o para llevar",
+    "wizardLocation": "Elige mesa o barra",
+    "wizardCustomer": "Agrega un nombre (opcional)",
     "table": "Mesa",
     "seats": "asientos",
     "seat": "Asiento",
@@ -866,5 +874,8 @@
     "saveAndPrint": "Continuar",
     "restDaysPaid": "Días de descanso pagados",
     "pay_other": "Otra"
+  },
+  "recipes": {
+    "title": "Recetas", "subtitle": "Platillos principales y complementos vinculados a elementos del menú e ingredientes.", "add": "Agregar receta", "recipe": "Receta", "category": "Categoría", "main": "Platillo principal", "supplement": "Complemento", "menuItem": "Elemento del menú", "noMenuItem": "Sin elemento del menú vinculado", "ingredients": "Ingredientes", "delete": "Eliminar receta", "addTitle": "Agregar receta", "namePlaceholder": "Nombre de la receta", "noLinkedMenuItem": "Sin elemento del menú vinculado", "addIngredient": "Agregar vínculo de ingrediente", "save": "Guardar"
   }
 }

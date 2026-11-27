@@ -30,6 +30,8 @@ import {
 const emptyForm: MenuIngredientInput = {
   name: "",
   category: "",
+  percentage: "",
+  price: null,
   available: true,
   notes: "",
 };
@@ -103,6 +105,8 @@ export function MenuIngredientsPage() {
     setForm({
       name: item.name,
       category: item.category,
+      percentage: item.percentage ?? "",
+      price: item.price ?? null,
       available: item.available,
       notes: item.notes,
     });
@@ -142,6 +146,16 @@ export function MenuIngredientsPage() {
     const cols: ColumnDef<MenuIngredient, unknown>[] = [
       { accessorKey: "name", header: t("menuIngredients.name"), size: 220 },
       { accessorKey: "category", header: t("menuIngredients.category"), size: 160 },
+      { accessorKey: "percentage", header: t("menuIngredients.percentage"), size: 110 },
+      {
+        accessorKey: "price",
+        header: t("menuIngredients.price"),
+        size: 100,
+        cell: ({ getValue }) => {
+          const price = getValue() as number | null;
+          return price == null ? "" : `$${price.toFixed(2)}`;
+        },
+      },
       {
         accessorKey: "available",
         header: t("menuIngredients.available"),
@@ -153,7 +167,6 @@ export function MenuIngredientsPage() {
             <Badge variant="outline">{t("menuIngredients.availableNo")}</Badge>
           ),
       },
-      { accessorKey: "notes", header: t("menuIngredients.notes"), size: 280 },
     ];
 
     if (isAdmin) {
@@ -261,6 +274,27 @@ export function MenuIngredientsPage() {
                   value={form.category}
                   onChange={(e) => setForm({ ...form, category: e.target.value })}
                   placeholder={t("menuIngredients.categoryPlaceholder")}
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="grid gap-2">
+                <Label>{t("menuIngredients.percentage")}</Label>
+                <Input
+                  value={form.percentage}
+                  onChange={(e) => setForm({ ...form, percentage: e.target.value })}
+                  placeholder={t("menuIngredients.percentagePlaceholder")}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label>{t("menuIngredients.price")}</Label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.price ?? ""}
+                  onChange={(e) => setForm({ ...form, price: e.target.value === "" ? null : Number(e.target.value) })}
+                  placeholder={t("menuIngredients.pricePlaceholder")}
                 />
               </div>
             </div>

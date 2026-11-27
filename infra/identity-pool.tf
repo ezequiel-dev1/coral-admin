@@ -64,9 +64,9 @@ resource "aws_iam_role_policy" "dynamodb_access" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid       = "DynamoDBAccess"
-        Effect    = "Allow"
-        Action    = [
+        Sid    = "DynamoDBAccess"
+        Effect = "Allow"
+        Action = [
           "dynamodb:Scan",
           "dynamodb:Query",
           "dynamodb:GetItem",
@@ -82,6 +82,7 @@ resource "aws_iam_role_policy" "dynamodb_access" {
             aws_dynamodb_table.ledger.arn,
             aws_dynamodb_table.menu_items.arn,
             aws_dynamodb_table.menu_ingredients.arn,
+            aws_dynamodb_table.recipes.arn,
             aws_dynamodb_table.orders.arn,
             aws_dynamodb_table.reservations.arn,
             aws_dynamodb_table.employees.arn,
@@ -89,13 +90,24 @@ resource "aws_iam_role_policy" "dynamodb_access" {
           ],
           # Production tables, same scope as UAT. Feedback is excluded because
           # it is only written server-side (not via browser Cognito creds).
-          [for k, t in aws_dynamodb_table.production : t.arn if k != "feedback"]
+          [for k, t in aws_dynamodb_table.production : t.arn if k != "feedback" && k != "audit-events"]
         )
       },
       {
-        Sid       = "ReceiptsS3Access"
-        Effect    = "Allow"
-        Action    = [
+        # Audit events are append-only for browser clients: they may be read or
+        # added, but not updated or deleted.
+        Sid    = "AuditEventAccess"
+        Effect = "Allow"
+        Action = ["dynamodb:GetItem", "dynamodb:Query", "dynamodb:PutItem"]
+        Resource = [
+          aws_dynamodb_table.audit_events.arn,
+          aws_dynamodb_table.production["audit-events"].arn
+        ]
+      },
+      {
+        Sid    = "ReceiptsS3Access"
+        Effect = "Allow"
+        Action = [
           "s3:GetObject",
           "s3:PutObject"
         ]

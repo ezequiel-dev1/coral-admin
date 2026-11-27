@@ -23,6 +23,7 @@ export const TABLES = {
   investments: `${prefix}investments`,
   menuItems: `${prefix}menu-items`,
   menuIngredients: `${prefix}menu-ingredients`,
+  recipes: `${prefix}recipes`,
   ledger: `${prefix}ledger`,
   orders: `${prefix}orders`,
   feedback: `${prefix}feedback`,
@@ -31,4 +32,5 @@ export const TABLES = {
   payrollReceipts: `${prefix}payroll-receipts`,
   kitchenPrintJobs: `${prefix}kitchen-print-jobs`,
   kitchenPrinterStatus: `${prefix}kitchen-printer-status`,
+  auditEvents: `${prefix}audit-events`,
 } as const;

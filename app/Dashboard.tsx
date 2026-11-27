@@ -10,11 +10,9 @@ import { MenuItemsPage } from "./pages/MenuItemsPage";
 import { MenuIngredientsPage } from "./pages/MenuIngredientsPage";
 import { CheckoutPage } from "./pages/CheckoutPage";
 import { OrdersPage } from "./pages/OrdersPage";
-import { ReservationsPage } from "./pages/ReservationsPage";
 import { EmployeesPage } from "./pages/EmployeesPage";
-import { UberTestPage } from "./pages/UberTestPage";
 import { SalesReportPage } from "./pages/SalesReportPage";
-import { APP_ENV } from "./lib/tables";
+import { RecipesPage } from "./pages/RecipesPage";
 import { authedFetch } from "./lib/apiFetch";
 import { OfflineSupport } from "./OfflineSupport";
 import { Button } from "@/components/ui/button";
@@ -27,12 +25,10 @@ import {
   Users,
   ShoppingCart,
   ClipboardList,
-  CalendarDays,
   Bell,
   LogOut,
   PanelLeftClose,
   PanelLeftOpen,
-  FlaskConical,
   Settings,
   BarChart3,
 } from "lucide-react";
@@ -50,7 +46,7 @@ export function Dashboard() {
   const { user, logout } = useAuth();
   const { lang, setLang, t } = useTranslation();
 
-  const validTabs = ["Overview", "Orders", "Reservations", "Checkout", "Reports", "Menu Items", "Menu Ingredients", "Employees", "Uber Test"];
+  const validTabs = ["Overview", "Orders", "Checkout", "Reports", "Menu Items", "Menu Ingredients", "Recipes", "Employees"];
 
   function getTabFromHash(): string {
     if (typeof window === "undefined") return "Overview";
@@ -179,26 +175,22 @@ export function Dashboard() {
     isPrivileged ||
     (user?.groups?.some((g) => g === "Manager" || g === "Mesero") ?? false);
 
-  // UAT-only tooling: hidden (and its API refuses to run) in production.
-  const showUberTest = APP_ENV !== "production";
-
   const allNavItems = [
     { key: "Overview", label: t("nav.overview"), icon: LayoutDashboard, public: false },
     { key: "Orders", staff: true, label: t("nav.orders"), icon: ClipboardList, public: false },
-    { key: "Reservations", label: t("nav.reservations"), icon: CalendarDays, public: false },
     { key: "Checkout", staff: true, label: t("nav.checkout"), icon: ShoppingCart, public: false },
-    { key: "Reports", manager: true, label: t("nav.reports"), icon: BarChart3, public: false },
+    { key: "Reports", administrator: true, label: t("nav.reports"), icon: BarChart3, public: false },
     { key: "Menu Items", administrator: true, label: t("nav.menuItems"), icon: UtensilsCrossed, public: false },
     { key: "Menu Ingredients", administrator: true, label: t("nav.menuIngredients"), icon: Carrot, public: false },
+    { key: "Recipes", administrator: true, label: t("nav.recipes"), icon: ClipboardList, public: false },
     { key: "Employees", administrator: true, label: t("nav.employees"), icon: Users, public: false },
-    ...(showUberTest ? [{ key: "Uber Test", overlord: true, label: "Uber Test", icon: FlaskConical, public: false }] : []),
   ];
 
   const navItems = allNavItems.filter((item) =>
-    item.public || (item.administrator && isAdministrator) || (item.overlord && isOverlord) || (item.manager && (isPrivileged || (user?.groups?.includes("Manager") ?? false))) || (!item.administrator && !item.overlord && !item.manager && (isPrivileged || (item.staff && isStaff)))
+    item.public || (item.administrator && isAdministrator) || (!item.administrator && (isPrivileged || (item.staff && isStaff)))
   );
 
-  // If the requested tab isn't allowed for this user (e.g. default "Overview"), fall back to their first one (Orders for managers).
+  // If the requested tab isn't allowed for this user, fall back to their first available tab.
   const activeTab = navItems.some((i) => i.key === tab) ? tab : navItems[0]?.key ?? tab;
 
   return (
@@ -285,13 +277,12 @@ export function Dashboard() {
         <div className="content">
           {isPrivileged && activeTab === "Overview" && <OverviewPage />}
           {isStaff && activeTab === "Orders" && <OrdersPage />}
-          {isPrivileged && activeTab === "Reservations" && <ReservationsPage />}
           {isStaff && activeTab === "Checkout" && <CheckoutPage />}
-          {(isPrivileged || user?.groups?.includes("Manager")) && activeTab === "Reports" && <SalesReportPage />}
+          {isAdministrator && activeTab === "Reports" && <SalesReportPage />}
           {isAdministrator && activeTab === "Menu Items" && <MenuItemsPage />}
           {isAdministrator && activeTab === "Menu Ingredients" && <MenuIngredientsPage />}
+          {isAdministrator && activeTab === "Recipes" && <RecipesPage />}
           {isAdministrator && activeTab === "Employees" && <EmployeesPage />}
-          {isOverlord && showUberTest && activeTab === "Uber Test" && <UberTestPage />}
         </div>
         <Dialog open={uatSettingsOpen} onOpenChange={setUatSettingsOpen}>
           <DialogContent className="sm:max-w-sm">

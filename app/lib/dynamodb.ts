@@ -292,11 +292,21 @@ export type MenuIngredient = {
   id: string;
   name: string;
   category: string;
+  percentage: string;
+  price: number | null;
   available: boolean;
   notes: string;
 };
 
 export type MenuIngredientInput = Omit<MenuIngredient, "id">;
+
+export type RecipeLine = { ingredientId?: string; ingredientName: string; quantity: string; unit: string };
+export type Recipe = { id: string; name: string; category: "main" | "supplement"; menuItemId?: string; /** Supplement recipes used by this main dish, such as sauces. */ supplementRecipeIds?: string[]; yield?: string; lines: RecipeLine[]; notes?: string };
+export type RecipeInput = Omit<Recipe, "id">;
+export async function fetchRecipes(): Promise<Recipe[]> { const r = await (await getClient()).send(new ScanCommand({ TableName: TABLES.recipes })); return (r.Items || []) as Recipe[]; }
+export async function createRecipe(recipe: RecipeInput): Promise<Recipe> { const record = { id: `recipe-${Date.now()}`, ...recipe }; await (await getClient()).send(new PutCommand({ TableName: TABLES.recipes, Item: record })); return record; }
+export async function updateRecipe(id: string, recipe: RecipeInput): Promise<void> { await (await getClient()).send(new PutCommand({ TableName: TABLES.recipes, Item: { id, ...recipe } })); }
+export async function deleteRecipe(id: string): Promise<void> { await (await getClient()).send(new DeleteCommand({ TableName: TABLES.recipes, Key: { id } })); }
 
 export async function fetchMenuIngredients(): Promise<MenuIngredient[]> {
   try {
@@ -328,11 +338,13 @@ export async function updateMenuIngredient(id: string, item: MenuIngredientInput
     new UpdateCommand({
       TableName: TABLES.menuIngredients,
       Key: { id },
-      UpdateExpression: "SET #n = :name, category = :category, available = :available, notes = :notes",
+      UpdateExpression: "SET #n = :name, category = :category, percentage = :percentage, price = :price, available = :available, notes = :notes",
       ExpressionAttributeNames: { "#n": "name" },
       ExpressionAttributeValues: {
         ":name": item.name,
         ":category": item.category,
+        ":percentage": item.percentage,
+        ":price": item.price,
         ":available": item.available,
         ":notes": item.notes,
       },

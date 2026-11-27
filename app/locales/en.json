@@ -20,7 +20,7 @@
     "orders": "Orders",
     "checkout": "Checkout",
     "menuItems": "Menu Items",
-    "menuIngredients": "Menu Ingredients",
+    "menuIngredients": "Ingredients",
     "providers": "Providers",
     "investments": "Investments",
     "sharedLoans": "Shared Loans",
@@ -30,6 +30,7 @@
     "ledger": "Ledger",
     "reservations": "Reservations",
     "employees": "Employees",
+    "recipes": "Recipes",
     "reports": "Reports"
   },
   "reports": {
@@ -470,6 +471,10 @@
     "namePlaceholder": "e.g. Octopus",
     "category": "Category",
     "categoryPlaceholder": "e.g. Seafood",
+    "percentage": "Percentage",
+    "percentagePlaceholder": "e.g. 1 kg",
+    "price": "Price",
+    "pricePlaceholder": "e.g. 160.00",
     "available": "Availability",
     "availableYes": "In stock",
     "availableNo": "Out of stock",
@@ -662,6 +667,9 @@
     "dineIn": "Dine-in",
     "takeout": "Takeout",
     "serviceType": "Service type",
+    "wizardService": "Select dine-in or takeout",
+    "wizardLocation": "Choose a table or bar",
+    "wizardCustomer": "Add a name (optional)",
     "table": "Table",
     "seats": "seats",
     "seat": "Seat",
@@ -866,5 +874,8 @@
     "saveAndPrint": "Continue",
     "restDaysPaid": "Paid rest days",
     "pay_other": "Other"
+  },
+  "recipes": {
+    "title": "Recipes", "subtitle": "Main dishes and supplements linked to menu items and ingredients.", "add": "Add recipe", "recipe": "Recipe", "category": "Category", "main": "Main dish", "supplement": "Supplement", "menuItem": "Menu item", "noMenuItem": "No menu item linked", "ingredients": "Ingredients", "delete": "Delete recipe", "addTitle": "Add recipe", "namePlaceholder": "Recipe name", "noLinkedMenuItem": "No linked menu item", "addIngredient": "Add ingredient link", "save": "Save"
   }
 }
