@@ -359,7 +359,7 @@
 .order-details-panel.order-details-desktop{display:none!important}
 @media(min-width:1101px){
   .content:has(.orders-workspace){position:relative}
-  .new-order-button{position:absolute;top:31px;right:30px}
+  .orders-actions{position:absolute;top:31px;right:30px}
   .orders-workspace{display:grid;grid-template-columns:minmax(360px,.72fr) minmax(440px,1.28fr);gap:24px;align-items:start}
   .orders-list-panel{min-width:0}
   .order-list{grid-template-columns:1fr;gap:10px}

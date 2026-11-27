@@ -32,6 +32,7 @@ import {
   Split,
   UtensilsCrossed,
   Bike,
+  History,
   XCircle,
 } from "lucide-react";
 import {
@@ -69,13 +70,14 @@ import {
   voidLine,
   withTotals,
 } from "../lib/orders";
-import { SEATING_SPOTS, SeatingChart } from "./SeatingChart";
+import { SEATING_SPOTS } from "./SeatingChart";
 import { MenuItemThumb } from "./MenuItemThumb";
 import { tableName } from "../lib/tableName";
 import { authedFetch } from "../lib/apiFetch";
 import { printAgent, canUsePrintAgent } from "../lib/printAgent";
 import { buildKitchenTicket } from "../lib/kitchenTicket";
 import { buildSaleTicket } from "../lib/saleTicket";
+import { fetchOrderAudit, recordOrderAudit, type AuditEvent } from "../lib/audit";
 
 type T = (key: string, vars?: Record<string, string>) => string;
 
@@ -143,6 +145,10 @@ export function OrdersPage() {
   const [cancelReason, setCancelReason] = useState("");
   const [showSelectedSplit, setShowSelectedSplit] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [auditCounts, setAuditCounts] = useState<Record<string, number>>({});
+  const [timelineOrder, setTimelineOrder] = useState<Order | null>(null);
+  const [timelineEvents, setTimelineEvents] = useState<AuditEvent[]>([]);
+  const [timelineLoading, setTimelineLoading] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -187,6 +193,32 @@ export function OrdersPage() {
       return o.status === filter;
     });
   }, [orders, filter]);
+
+  const isManager = Boolean(user?.groups.some((group) => ["Manager", "Administrator", "Overlord"].includes(group)));
+
+  useEffect(() => {
+    if (!isManager) return;
+    let active = true;
+    Promise.all(visible.map(async (order) => [order.id, (await fetchOrderAudit(order.id)).length] as const))
+      .then((counts) => {
+        if (active) setAuditCounts(Object.fromEntries(counts));
+      })
+      .catch((error) => console.error("Failed to load audit counts:", error));
+    return () => { active = false; };
+  }, [isManager, visible]);
+
+  async function openTimeline(order: Order) {
+    setTimelineOrder(order);
+    setTimelineLoading(true);
+    try {
+      setTimelineEvents(await fetchOrderAudit(order.id));
+    } catch (error) {
+      console.error("Failed to load order timeline:", error);
+      setTimelineEvents([]);
+    } finally {
+      setTimelineLoading(false);
+    }
+  }
 
   const counts = useMemo(() => {
     const restaurantOrders = orders.filter((o) => o.source !== "uber-eats");
@@ -382,11 +414,11 @@ export function OrdersPage() {
           <h1>{t("orders.title")}</h1>
           <p className="subhead">{t("orders.subtitle")}</p>
         </div>
-        <div className="flex gap-2">
+        <div className="orders-actions flex gap-2">
           <Button variant="outline" onClick={refreshOrders} disabled={refreshing}>
             <RefreshCw className={refreshing ? "animate-spin" : ""} size={16} /> {t("orders.refresh")}
           </Button>
-          <Button onClick={startNew} className="new-order-button">
+          <Button onClick={startNew}>
             <Plus size={16} /> {t("orders.newOrder")}
           </Button>
         </div>
@@ -466,6 +498,19 @@ export function OrdersPage() {
                     </Badge>
                     <b className="order-list-card-total w-28 text-right">{formatMoney(o.total)}</b>
                   </div>
+                  {isManager && (
+                    <div className="mt-2" onClick={(event) => event.stopPropagation()}>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full"
+                        disabled={!auditCounts[o.id]}
+                        onClick={() => openTimeline(o)}
+                      >
+                        <History size={14} /> Timeline{auditCounts[o.id] ? ` (${auditCounts[o.id]})` : ""}
+                      </Button>
+                    </div>
+                  )}
                   {isSelected && (
                     <div onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
                       <OrderDetailsPanel
@@ -545,6 +590,28 @@ export function OrdersPage() {
         </DialogContent>
       </Dialog>
 
+      <Dialog open={!!timelineOrder} onOpenChange={(open) => !open && setTimelineOrder(null)}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Order timeline{timelineOrder?.saleCode ? ` · ${timelineOrder.saleCode}` : ""}</DialogTitle>
+          </DialogHeader>
+          {timelineLoading ? (
+            <div className="flex items-center gap-2 py-8 text-sm text-[var(--text-muted)]"><Loader2 className="animate-spin" size={16} /> Loading activity…</div>
+          ) : (
+            <ol className="max-h-[60vh] space-y-4 overflow-y-auto border-l-2 border-input pl-5">
+              {timelineEvents.map((event) => (
+                <li key={event.eventId} className="relative">
+                  <span className="absolute -left-[29px] top-1 size-3 rounded-full bg-primary ring-4 ring-[var(--surface)]" />
+                  <p className="font-medium">{event.summary}</p>
+                  <p className="text-xs text-[var(--text-muted)]">{event.actor.name} · {event.actor.roles.join(", ") || event.actor.source} · {new Date(event.occurredAt).toLocaleString()}</p>
+                  {event.details && <AuditDetails details={event.details} />}
+                </li>
+              ))}
+            </ol>
+          )}
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={showCancel} onOpenChange={setShowCancel}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -572,6 +639,19 @@ export function OrdersPage() {
         />
       )}
     </>
+  );
+}
+
+function AuditDetails({ details }: { details: Record<string, unknown> }) {
+  const voided = Array.isArray(details.voided) ? details.voided as { name?: unknown; quantity?: unknown; reason?: unknown }[] : [];
+  return (
+    <div className="mt-1 text-xs text-[var(--text-muted)]">
+      {typeof details.itemCount === "number" && <p>Items on order: {details.itemCount}</p>}
+      {typeof details.total === "number" && <p>Order total: {formatMoney(details.total)}</p>}
+      {voided.map((line, index) => (
+        <p key={index}>Removed {String(line.quantity ?? 1)}× {String(line.name ?? "item")}{line.reason ? ` — ${String(line.reason)}` : ""}</p>
+      ))}
+    </div>
   );
 }
 
@@ -786,6 +866,8 @@ function OrderEditor({
   const [showKitchenConfirm, setShowKitchenConfirm] = useState(false);
   const [showReprint, setShowReprint] = useState(false);
   const [reprintCustomerCopy, setReprintCustomerCopy] = useState(false);
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
+  const [lastSavedOrder, setLastSavedOrder] = useState<Order>(initial);
   const { user: currentUser } = useAuth();
 
   const readOnly = draft.status === "paid" || draft.status === "cancelled";
@@ -809,6 +891,13 @@ function OrderEditor({
         (!term || i.name.toLowerCase().includes(term) || (i.description ?? "").toLowerCase().includes(term))
     );
   }, [available, category, search]);
+
+  useEffect(() => {
+    if (!persisted) return;
+    fetchOrderAudit(initial.id).then(setAuditEvents).catch((error) =>
+      console.error("Failed to load order audit:", error),
+    );
+  }, [initial.id, persisted]);
 
   function update(patch: Partial<Order>) {
     setDraft((d) => ({ ...d, ...patch }));
@@ -903,7 +992,27 @@ function OrderEditor({
     }
     const toSave = withTotals({ ...draft, ...patch });
     const stored = await saveOrder(toSave); // carries the sale code assigned on first save
+    const voided = (stored.voidedItems ?? []).filter(
+      (line) => !(lastSavedOrder.voidedItems ?? []).some((previous) => previous.lineId === line.lineId),
+    );
+    const itemDelta = stored.items.reduce((count, line) => count + line.quantity, 0) - lastSavedOrder.items.reduce((count, line) => count + line.quantity, 0);
+    const eventType = !persisted ? "order.created" : voided.length ? "item.voided" : "order.updated";
+    const summary = !persisted
+      ? `Created order with ${stored.items.reduce((count, line) => count + line.quantity, 0)} item(s)`
+      : voided.length
+        ? `Voided ${voided.map((line) => `${line.quantity}× ${line.name}`).join(", ")}`
+        : itemDelta
+          ? `${itemDelta > 0 ? "Added" : "Removed"} ${Math.abs(itemDelta)} item(s)`
+          : "Updated order details";
+    void recordOrderAudit(stored.id, eventType, summary, {
+      itemCount: stored.items.reduce((count, line) => count + line.quantity, 0),
+      total: stored.total,
+      voided: voided.map(({ name, quantity, voidReason }) => ({ name, quantity, reason: voidReason })),
+    }).then(() => fetchOrderAudit(stored.id)).then(setAuditEvents).catch((error) =>
+      console.error("Failed to record order audit:", error),
+    );
     setDraft(stored);
+    setLastSavedOrder(stored);
     setPersisted(true);
     setDirty(false);
     onChanged();
@@ -1116,74 +1225,8 @@ function OrderEditor({
       </section>
 
       <div className="grid gap-4 lg:grid-cols-[1fr_380px]">
-        {/* ------------------------- left: setup + menu ------------------------- */}
+        {/* ----------------------------- left: menu ----------------------------- */}
         <div className="grid content-start gap-4">
-          {!itemsOnly && <article className="rounded-xl border border-input bg-[var(--surface)] p-4">
-            <div className="mb-3 grid gap-2">
-              <Label>{t("orders.serviceType")}</Label>
-              <div className="flex gap-2" role="group" aria-label={t("orders.serviceType")}>
-                {(["dine-in", "takeout"] as ServiceType[]).map((type) => (
-                  <Button
-                    key={type}
-                    variant={serviceType === type ? "default" : "outline"}
-                    disabled={readOnly}
-                    aria-pressed={serviceType === type}
-                    onClick={() => serviceType !== type && setService(type)}
-                  >
-                    {t(type === "dine-in" ? "orders.dineIn" : "orders.takeout")}
-                  </Button>
-                ))}
-              </div>
-            </div>
-
-            {serviceType === "dine-in" ? (
-              <div className="grid gap-3">
-                <div className="flex items-center justify-between">
-                  <Label className="mb-0">{t("orders.table")}</Label>
-                  <span className="text-xs text-[var(--text-muted)]">
-                    {draft.tableLabel ? tableName(t, draft.tableLabel) : t("orders.pickTable")}
-                  </span>
-                </div>
-                <div className={readOnly ? "pointer-events-none opacity-60" : ""}>
-                  <SeatingChart
-                    selected={draft.tableLabel || null}
-                    occupied={(id) => occupiedLabels.has(id) && id !== initial.tableLabel}
-                    onSelect={(id) => update({ tableLabel: id, seat: undefined })}
-                    seatsLabel={t("orders.seats")}
-                  />
-                </div>
-                {seats > 0 && (
-                  <div className="grid gap-1">
-                    <Label>{t("orders.seat")}</Label>
-                    <select
-                      className={selectClass}
-                      value={draft.seat ?? ""}
-                      disabled={readOnly}
-                      onChange={(e) => update({ seat: e.target.value ? Number(e.target.value) : undefined })}
-                    >
-                      <option value="">{t("orders.noSeat")}</option>
-                      {Array.from({ length: seats }, (_, i) => (
-                        <option key={i} value={i + 1}>
-                          {t("orders.seat")} {i + 1}
-                        </option>
-                      ))}
-                    </select>
-                    <small className="text-xs text-[var(--text-muted)]">{t("orders.seatHint")}</small>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="grid gap-1">
-                <Label>{t("orders.customer")}</Label>
-                <Input
-                  value={draft.customerName ?? ""}
-                  disabled={readOnly}
-                  onChange={(e) => update({ customerName: e.target.value })}
-                />
-              </div>
-            )}
-          </article>}
-
           {!readOnly && (
             <article className="rounded-xl border border-input bg-[var(--surface)] p-4">
               <div className="mb-3 flex items-center gap-2">
@@ -1239,7 +1282,86 @@ function OrderEditor({
 
         {/* ------------------------- right: order panel ------------------------- */}
         <aside className="grid content-start gap-3 rounded-xl border border-input bg-[var(--surface)] p-4 lg:sticky lg:top-4 lg:self-start">
+          {!itemsOnly && (
+            <section className="grid gap-4 border-b border-input pb-4" aria-label={t("orders.serviceType")}>
+              <div className="grid gap-2">
+                <Label className="flex items-center gap-2">
+                  <span className="flex size-5 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">1</span>
+                  {t("orders.wizardService")}
+                </Label>
+                <div className="grid grid-cols-2 gap-2" role="group" aria-label={t("orders.serviceType")}>
+                  {(["dine-in", "takeout"] as ServiceType[]).map((type) => (
+                    <Button
+                      key={type}
+                      variant={serviceType === type ? "default" : "outline"}
+                      disabled={readOnly}
+                      aria-pressed={serviceType === type}
+                      onClick={() => serviceType !== type && setService(type)}
+                    >
+                      {t(type === "dine-in" ? "orders.dineIn" : "orders.takeout")}
+                    </Button>
+                  ))}
+                </div>
+              </div>
+
+              {serviceType === "dine-in" ? (
+                <div className="grid gap-2">
+                  <Label className="flex items-center gap-2">
+                    <span className="flex size-5 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">2</span>
+                    {t("orders.wizardLocation")}
+                  </Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {SEATING_SPOTS.map((spot) => {
+                      const unavailable = occupiedLabels.has(spot.id) && spot.id !== initial.tableLabel;
+                      const selected = draft.tableLabel === spot.id;
+                      return (
+                        <Button
+                          key={spot.id}
+                          variant={selected ? "default" : "outline"}
+                          disabled={readOnly || unavailable}
+                          aria-pressed={selected}
+                          onClick={() => update({ tableLabel: spot.id, seat: undefined })}
+                          className="h-auto min-h-14 flex-col gap-0.5 py-2"
+                        >
+                          <span>{tableName(t, spot.id)}</span>
+                          <span className="text-xs font-normal opacity-75">{spot.seats} {t("orders.seats")}</span>
+                        </Button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="grid gap-1">
+                  <Label className="flex items-center gap-2">
+                    <span className="flex size-5 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground">3</span>
+                    {t("orders.wizardCustomer")}
+                  </Label>
+                  <Input
+                    value={draft.customerName ?? ""}
+                    disabled={readOnly}
+                    onChange={(e) => update({ customerName: e.target.value })}
+                  />
+                </div>
+              )}
+            </section>
+          )}
           <h2 className="text-base font-semibold">{t("orders.orderPanel")}</h2>
+
+          {auditEvents.length > 0 && (
+            <section className="border-b border-input pb-3">
+              <h3 className="mb-2 text-sm font-semibold">Activity</h3>
+              <ol className="grid gap-2">
+                {auditEvents.slice(0, 8).map((event) => (
+                  <li key={event.eventId} className="border-l-2 border-primary pl-2 text-xs">
+                    <p className="font-medium">{event.summary}</p>
+                    <p className="text-[var(--text-muted)]">
+                      {event.actor.name} · {new Date(event.occurredAt).toLocaleString()}
+                    </p>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          )}
 
           {unvoided.length === 0 ? (
             <p className="text-sm text-[var(--text-muted)]">{t("orders.emptyOrder")}</p>
