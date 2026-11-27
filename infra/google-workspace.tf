@@ -13,7 +13,7 @@ resource "aws_route53_record" "root_txt" {
   type    = "TXT"
   ttl     = 3600
   records = [
-    "google-site-verification=bwL5J4ruR6QBpqlhZooCzofq8ueyoF63NTE9_V-yus0",
+    "google-site-verification=bwL5J4ruR6QBpqIhZooCzofq8ueyoF63NTE9_V-yus0",
     "v=spf1 include:_spf.google.com -all",
   ]
 }
